@@ -1,0 +1,3 @@
+[workspace]
+members = ["packet_core", "packet_macros", "examples"]
+workspace.resolver = "2"

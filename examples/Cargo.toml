@@ -1,0 +1,28 @@
+[package]
+name = "packet_examples"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+packet_core = { path = "../packet_core" }
+packet_macros = { path = "../packet_macros" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde-value = "0.7"
+
+[[bin]]
+name = "incoming_decode"
+path = "incoming_decode.rs"
+
+[[bin]]
+name = "outgoing_encode"
+path = "outgoing_encode.rs"
+
+[[bin]]
+name = "event_dispatch"
+path = "event_dispatch.rs"
+
+[[bin]]
+name = "proxy_intercept"
+path = "proxy_intercept.rs"

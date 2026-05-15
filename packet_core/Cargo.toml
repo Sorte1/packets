@@ -1,0 +1,10 @@
+[package]
+name = "packet_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+rmp-serde = "1"
+serde = { version = "1", features = ["derive"] }
+serde-value = "0.7"
