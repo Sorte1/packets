@@ -74,6 +74,19 @@ Runnable binaries live in [`examples/`](examples/):
 
 Run any of them with `cargo run -p packet_examples --bin <name>`.
 
+## CLI
+
+There's a small inspector binary in [`packets-cli/`](packets-cli/) for poking at captured frames:
+
+```
+$ cargo run -q -p packets-cli -- decode "91 a2 70 6f 00 00"
+event:   po
+trailer: 00 00
+payload: 0 value(s)
+```
+
+Accepts packed hex, `0x`-prefixed bytes, `--file <path>` for raw binary, or hex on stdin.
+
 ## Fuzzing
 
 The wire decoder parses untrusted bytes, so there's a small [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz) harness in [`fuzz/`](fuzz/):
