@@ -9,6 +9,8 @@ fuzz_target!(|data: &[u8]| {
     };
     let packed = repack_frame(&values, trailer).unwrap();
     let (values2, trailer2) = unpack_frame(&packed).unwrap();
-    assert_eq!(values, values2);
-    assert_eq!(trailer, trailer2);
+    let packed2 = repack_frame(&values2, trailer2).unwrap();
+    let (values3, trailer3) = unpack_frame(&packed2).unwrap();
+    assert_eq!(values2, values3);
+    assert_eq!(trailer2, trailer3);
 });

@@ -73,3 +73,15 @@ Runnable binaries live in [`examples/`](examples/):
 - `proxy_intercept` — `OutgoingEventEnum` decode-mutate-reencode round-trip
 
 Run any of them with `cargo run -p packet_examples --bin <name>`.
+
+## Fuzzing
+
+The wire decoder parses untrusted bytes, so there's a small [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz) harness in [`fuzz/`](fuzz/):
+
+- `unpack_frame` — arbitrary bytes into `unpack_frame`, shouldn't panic.
+- `roundtrip` — unpack, repack, unpack again, assert the values match.
+
+```
+cargo +nightly fuzz run unpack_frame
+cargo +nightly fuzz run roundtrip
+```
