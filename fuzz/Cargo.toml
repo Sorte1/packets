@@ -1,0 +1,29 @@
+[package]
+name = "packets-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+packet_core = { path = "../packet_core" }
+
+[[bin]]
+name = "unpack_frame"
+path = "fuzz_targets/unpack_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "roundtrip"
+path = "fuzz_targets/roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]
