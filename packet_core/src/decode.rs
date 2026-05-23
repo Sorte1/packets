@@ -2,7 +2,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_value::Value;
 
-use crate::error::{DecodeError, DecodeErrorKind};
+use crate::error::{DecodeError, DecodeErrorKind, PathSegment};
 
 pub fn scalar_as_seq(payload: &[Value]) -> Vec<Value> {
     match payload {
@@ -100,13 +100,15 @@ pub fn decode_chunks<T: DeserializeOwned>(
     }
 
     let mut items = Vec::with_capacity(seq.len() / chunk_size);
-    for chunk in seq.chunks(chunk_size) {
+    for (chunk_idx, chunk) in seq.chunks(chunk_size).enumerate() {
         let val = crate::normalize_value(Value::Seq(chunk.to_vec()));
         let item = T::deserialize(val).map_err(|e| {
-            DecodeError::custom(format!(
+            let mut err = DecodeError::custom(format!(
                 "event {:?} field {:?}: failed to decode chunk item: {}",
                 event, field_name, e
-            ))
+            ));
+            err.prepend(PathSegment::Chunk(chunk_idx));
+            err
         })?;
         items.push(item);
     }
@@ -170,13 +172,15 @@ pub fn decode_chunks_zero_as_empty<T: DeserializeOwned>(
     }
 
     let mut items = Vec::with_capacity(seq.len() / chunk_size);
-    for chunk in seq.chunks(chunk_size) {
+    for (chunk_idx, chunk) in seq.chunks(chunk_size).enumerate() {
         let val = crate::normalize_value(Value::Seq(chunk.to_vec()));
         let item = T::deserialize(val).map_err(|e| {
-            DecodeError::custom(format!(
+            let mut err = DecodeError::custom(format!(
                 "event {:?} field {:?}: failed to decode chunk item: {}",
                 event, field_name, e
-            ))
+            ));
+            err.prepend(PathSegment::Chunk(chunk_idx));
+            err
         })?;
         items.push(item);
     }
