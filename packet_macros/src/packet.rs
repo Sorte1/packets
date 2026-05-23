@@ -11,6 +11,7 @@ struct PacketOptions {
     allow_extra: bool,
     default_missing: bool,
     scalar_as_seq: bool,
+    map: bool,
 }
 
 #[derive(Debug, Default)]
@@ -23,6 +24,7 @@ struct FieldOptions {
     extras: bool,
     at: Option<usize>,
     default_with: Option<Path>,
+    rename: Option<String>,
 }
 
 pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
@@ -42,6 +44,10 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
     })?;
 
     let fields_named = extract_named_fields(&input)?;
+
+    if packet_options.map {
+        return expand_map_mode(struct_name, &event_name, fields_named);
+    }
 
     let mut decode_statements = Vec::new();
     let mut init_fields = Vec::new();
@@ -253,6 +259,129 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
     })
 }
 
+fn expand_map_mode(
+    struct_name: &syn::Ident,
+    event_name: &str,
+    fields_named: &syn::FieldsNamed,
+) -> syn::Result<TokenStream> {
+    let mut decode_statements = Vec::new();
+    let mut init_fields = Vec::new();
+    let mut outgoing_inserts = Vec::new();
+
+    for field in fields_named.named.iter() {
+        let field_ident = field
+            .ident
+            .as_ref()
+            .ok_or_else(|| syn::Error::new_spanned(field, "Packet derive requires named fields"))?;
+        let field_ty = &field.ty;
+        let opts = parse_field_options(&field.attrs)?;
+
+        if opts.extras || opts.chunks.is_some() || opts.at.is_some() {
+            return Err(syn::Error::new_spanned(
+                field,
+                "in #[packet(map)] mode, fields cannot use `extras`, `chunks`, or `at`",
+            ));
+        }
+
+        let lookup = opts.rename.clone().unwrap_or_else(|| field_ident.to_string());
+
+        if extract_option_inner(field_ty).is_some() {
+            decode_statements.push(quote! {
+                let #field_ident: #field_ty = match map.get(&serde_value::Value::String(#lookup.to_string())) {
+                    Some(v) => packet_core::deserialize_value::<#field_ty>(v.clone())
+                        .map_err(|e| anyhow::anyhow!(
+                            "event {:?} map field {:?}: {}", #event_name, #lookup, e
+                        ))?,
+                    None => None,
+                };
+            });
+        } else if let Some(path) = &opts.default_with {
+            decode_statements.push(quote! {
+                let #field_ident: #field_ty = match map.get(&serde_value::Value::String(#lookup.to_string())) {
+                    Some(v) => packet_core::deserialize_value::<#field_ty>(v.clone())
+                        .map_err(|e| anyhow::anyhow!(
+                            "event {:?} map field {:?}: {}", #event_name, #lookup, e
+                        ))?,
+                    None => #path(),
+                };
+            });
+        } else if opts.default {
+            decode_statements.push(quote! {
+                let #field_ident: #field_ty = match map.get(&serde_value::Value::String(#lookup.to_string())) {
+                    Some(v) => packet_core::deserialize_value::<#field_ty>(v.clone())
+                        .map_err(|e| anyhow::anyhow!(
+                            "event {:?} map field {:?}: {}", #event_name, #lookup, e
+                        ))?,
+                    None => <#field_ty as ::std::default::Default>::default(),
+                };
+            });
+        } else {
+            decode_statements.push(quote! {
+                let #field_ident: #field_ty = match map.get(&serde_value::Value::String(#lookup.to_string())) {
+                    Some(v) => packet_core::deserialize_value::<#field_ty>(v.clone())
+                        .map_err(|e| anyhow::anyhow!(
+                            "event {:?} map field {:?}: {}", #event_name, #lookup, e
+                        ))?,
+                    None => anyhow::bail!(
+                        "event {:?} map: missing required field {:?}", #event_name, #lookup
+                    ),
+                };
+            });
+        }
+
+        init_fields.push(quote! { #field_ident });
+
+        if !opts.skip {
+            outgoing_inserts.push(quote! {
+                m.insert(
+                    serde_value::Value::String(#lookup.to_string()),
+                    serde_value::to_value(&self.#field_ident)?,
+                );
+            });
+        }
+    }
+
+    Ok(quote! {
+        impl packet_core::PacketMeta for #struct_name {
+            const EVENT_NAME: &'static str = #event_name;
+        }
+
+        impl packet_core::PacketDecode for #struct_name {
+            fn decode_payload(payload: &[serde_value::Value]) -> anyhow::Result<Self> {
+                let map_val = payload.first().ok_or_else(|| anyhow::anyhow!(
+                    "event {:?}: map mode expects a single map payload", #event_name
+                ))?;
+                let map = match map_val {
+                    serde_value::Value::Map(m) => m,
+                    other => anyhow::bail!(
+                        "event {:?}: expected map payload, got {:?}", #event_name, other
+                    ),
+                };
+
+                #(#decode_statements)*
+
+                Ok(Self {
+                    #(#init_fields),*
+                })
+            }
+        }
+
+        impl packet_core::OutgoingPacket for #struct_name {
+            fn to_values(&self) -> anyhow::Result<Vec<serde_value::Value>> {
+                let mut m: ::std::collections::BTreeMap<serde_value::Value, serde_value::Value> =
+                    ::std::collections::BTreeMap::new();
+                #(#outgoing_inserts)*
+                Ok(vec![
+                    serde_value::Value::String(
+                        <Self as packet_core::PacketMeta>::EVENT_NAME.to_string()
+                    ),
+                    serde_value::Value::Map(m),
+                ])
+            }
+        }
+    })
+}
+
 fn extract_named_fields(input: &DeriveInput) -> syn::Result<&syn::FieldsNamed> {
     match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -303,9 +432,12 @@ fn parse_packet_options(attrs: &[Attribute]) -> syn::Result<PacketOptions> {
             } else if meta.path.is_ident("scalar_as_seq") {
                 options.scalar_as_seq = true;
                 Ok(())
+            } else if meta.path.is_ident("map") {
+                options.map = true;
+                Ok(())
             } else {
                 Err(meta.error(
-                    "unsupported #[packet(...)] struct option; supported: event, allow_extra, default_missing, scalar_as_seq",
+                    "unsupported #[packet(...)] struct option; supported: event, allow_extra, default_missing, scalar_as_seq, map",
                 ))
             }
         })?;
@@ -371,9 +503,14 @@ fn parse_field_options(attrs: &[Attribute]) -> syn::Result<FieldOptions> {
                 let path: Path = lit.parse()?;
                 options.default_with = Some(path);
                 Ok(())
+            } else if meta.path.is_ident("rename") {
+                let value = meta.value()?;
+                let lit: LitStr = value.parse()?;
+                options.rename = Some(lit.value());
+                Ok(())
             } else {
                 Err(meta.error(
-                    "unsupported #[packet(...)] field option; supported: default, coerce, chunks(Type, N), nested, skip, extras, at = N, default_with = \"path\"",
+                    "unsupported #[packet(...)] field option; supported: default, coerce, chunks(Type, N), nested, skip, extras, at = N, default_with = \"path\", rename = \"name\"",
                 ))
             }
         })?;
