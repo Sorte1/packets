@@ -2,10 +2,10 @@ use anyhow::{anyhow, Result};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_value::Value;
-use std::fmt;
 
 pub mod decode;
 pub mod error;
+pub mod fmt;
 pub mod wire;
 
 pub use error::{DecodeError, DecodeErrorKind, ValueKind};
@@ -123,8 +123,8 @@ impl<T: Default + Serialize> Serialize for ZeroOrDefault<T> {
     }
 }
 
-impl<T: Default + fmt::Debug> fmt::Debug for ZeroOrDefault<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<T: Default + std::fmt::Debug> std::fmt::Debug for ZeroOrDefault<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
