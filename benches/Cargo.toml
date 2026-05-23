@@ -1,0 +1,19 @@
+[package]
+name = "packets-benches"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+packet_core = { path = "../packet_core" }
+packet_macros = { path = "../packet_macros" }
+serde = { version = "1", features = ["derive"] }
+serde-value = "0.7"
+anyhow = "1"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "decode"
+harness = false
