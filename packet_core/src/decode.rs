@@ -192,151 +192,170 @@ pub struct CoerceFlags {
     pub num_to_bool: bool,
     pub bool_to_num: bool,
     pub str_num: bool,
+    pub lossless: bool,
+}
+
+#[inline]
+fn lossless_int_to_f64(src: i128) -> Option<f64> {
+    if src.unsigned_abs() <= (1u128 << 53) {
+        Some(src as f64)
+    } else {
+        None
+    }
+}
+
+#[inline]
+fn lossless_int_to_f32(src: i128) -> Option<f32> {
+    if src.unsigned_abs() <= (1u128 << 24) {
+        Some(src as f32)
+    } else {
+        None
+    }
+}
+
+#[inline]
+fn lossless_f64_to_int<T>(src: f64, lossless: bool) -> Option<T>
+where
+    T: Copy + TryFrom<i128>,
+{
+    if !lossless {
+        return None;
+    }
+    if !src.is_finite() || src.fract() != 0.0 {
+        return None;
+    }
+    let as_i128 = src as i128;
+    T::try_from(as_i128).ok()
+}
+
+fn push_signed_int_alternatives(out: &mut Vec<Value>, src: i128, lossless: bool) {
+    if let Ok(v) = i8::try_from(src) {
+        out.push(Value::I8(v));
+    }
+    if let Ok(v) = i16::try_from(src) {
+        out.push(Value::I16(v));
+    }
+    if let Ok(v) = i32::try_from(src) {
+        out.push(Value::I32(v));
+    }
+    if let Ok(v) = i64::try_from(src) {
+        out.push(Value::I64(v));
+    }
+    if let Ok(v) = u8::try_from(src) {
+        out.push(Value::U8(v));
+    }
+    if let Ok(v) = u16::try_from(src) {
+        out.push(Value::U16(v));
+    }
+    if let Ok(v) = u32::try_from(src) {
+        out.push(Value::U32(v));
+    }
+    if let Ok(v) = u64::try_from(src) {
+        out.push(Value::U64(v));
+    }
+    push_int_float_alternatives(out, src, lossless);
+}
+
+fn push_unsigned_int_alternatives(out: &mut Vec<Value>, src: u128, lossless: bool) {
+    if let Ok(v) = u8::try_from(src) {
+        out.push(Value::U8(v));
+    }
+    if let Ok(v) = u16::try_from(src) {
+        out.push(Value::U16(v));
+    }
+    if let Ok(v) = u32::try_from(src) {
+        out.push(Value::U32(v));
+    }
+    if let Ok(v) = u64::try_from(src) {
+        out.push(Value::U64(v));
+    }
+    if let Ok(v) = i8::try_from(src) {
+        out.push(Value::I8(v));
+    }
+    if let Ok(v) = i16::try_from(src) {
+        out.push(Value::I16(v));
+    }
+    if let Ok(v) = i32::try_from(src) {
+        out.push(Value::I32(v));
+    }
+    if let Ok(v) = i64::try_from(src) {
+        out.push(Value::I64(v));
+    }
+    if let Ok(signed) = i128::try_from(src) {
+        push_int_float_alternatives(out, signed, lossless);
+    }
+}
+
+fn push_int_float_alternatives(out: &mut Vec<Value>, src: i128, lossless: bool) {
+    if lossless {
+        if let Some(f) = lossless_int_to_f64(src) {
+            out.push(Value::F64(f));
+        }
+        if let Some(f) = lossless_int_to_f32(src) {
+            out.push(Value::F32(f));
+        }
+    } else {
+        out.push(Value::F64(src as f64));
+        out.push(Value::F32(src as f32));
+    }
+}
+
+fn push_float_alternatives(out: &mut Vec<Value>, src: f64, lossless: bool) {
+    if lossless {
+        let as_f32 = src as f32;
+        if as_f32 as f64 == src || (src.is_nan() && as_f32.is_nan()) {
+            out.push(Value::F32(as_f32));
+        }
+        if let Some(v) = lossless_f64_to_int::<i64>(src, true) {
+            out.push(Value::I64(v));
+        }
+        if let Some(v) = lossless_f64_to_int::<i32>(src, true) {
+            out.push(Value::I32(v));
+        }
+        if let Some(v) = lossless_f64_to_int::<i16>(src, true) {
+            out.push(Value::I16(v));
+        }
+        if let Some(v) = lossless_f64_to_int::<i8>(src, true) {
+            out.push(Value::I8(v));
+        }
+        if let Some(v) = lossless_f64_to_int::<u64>(src, true) {
+            out.push(Value::U64(v));
+        }
+        if let Some(v) = lossless_f64_to_int::<u32>(src, true) {
+            out.push(Value::U32(v));
+        }
+        if let Some(v) = lossless_f64_to_int::<u16>(src, true) {
+            out.push(Value::U16(v));
+        }
+        if let Some(v) = lossless_f64_to_int::<u8>(src, true) {
+            out.push(Value::U8(v));
+        }
+    } else {
+        out.extend([
+            Value::F32(src as f32),
+            Value::I64(src as i64),
+            Value::U64(src as u64),
+            Value::I32(src as i32),
+            Value::I16(src as i16),
+            Value::U32(src as u32),
+        ]);
+    }
 }
 
 fn coerce_alternatives(value: &Value, flags: CoerceFlags) -> Vec<Value> {
     let mut out = Vec::new();
+    let lossless = flags.lossless;
     match value {
-        Value::F32(f) => {
-            out.extend([
-                Value::F64(*f as f64),
-                Value::I64(*f as i64),
-                Value::U64(*f as u64),
-                Value::I32(*f as i32),
-                Value::I16(*f as i16),
-                Value::U32(*f as u32),
-            ]);
-            if flags.num_to_bool {
-                out.push(Value::Bool(*f != 0.0));
-            }
-        }
-        Value::F64(f) => {
-            out.extend([
-                Value::F32(*f as f32),
-                Value::I64(*f as i64),
-                Value::U64(*f as u64),
-                Value::I32(*f as i32),
-                Value::I16(*f as i16),
-                Value::U32(*f as u32),
-            ]);
-            if flags.num_to_bool {
-                out.push(Value::Bool(*f != 0.0));
-            }
-        }
-        Value::I8(i) => {
-            out.extend([
-                Value::I64(*i as i64),
-                Value::I16(*i as i16),
-                Value::I32(*i as i32),
-                Value::U8(*i as u8),
-                Value::U64(*i as u64),
-                Value::F64(*i as f64),
-                Value::F32(*i as f32),
-            ]);
-            if flags.num_to_bool {
-                out.push(Value::Bool(*i != 0));
-            }
-        }
-        Value::I16(i) => {
-            out.extend([
-                Value::I64(*i as i64),
-                Value::I32(*i as i32),
-                Value::I8(*i as i8),
-                Value::U16(*i as u16),
-                Value::U64(*i as u64),
-                Value::F64(*i as f64),
-                Value::F32(*i as f32),
-            ]);
-            if flags.num_to_bool {
-                out.push(Value::Bool(*i != 0));
-            }
-        }
-        Value::I32(i) => {
-            out.extend([
-                Value::I64(*i as i64),
-                Value::I16(*i as i16),
-                Value::I8(*i as i8),
-                Value::U32(*i as u32),
-                Value::U64(*i as u64),
-                Value::F64(*i as f64),
-                Value::F32(*i as f32),
-            ]);
-            if flags.num_to_bool {
-                out.push(Value::Bool(*i != 0));
-            }
-        }
-        Value::I64(i) => {
-            out.extend([
-                Value::I32(*i as i32),
-                Value::I16(*i as i16),
-                Value::I8(*i as i8),
-                Value::U64(*i as u64),
-                Value::U32(*i as u32),
-                Value::F64(*i as f64),
-                Value::F32(*i as f32),
-            ]);
-            if flags.num_to_bool {
-                out.push(Value::Bool(*i != 0));
-            }
-        }
-        Value::U8(u) => {
-            out.extend([
-                Value::U64(*u as u64),
-                Value::U16(*u as u16),
-                Value::U32(*u as u32),
-                Value::I8(*u as i8),
-                Value::I16(*u as i16),
-                Value::I64(*u as i64),
-                Value::F64(*u as f64),
-                Value::F32(*u as f32),
-            ]);
-            if flags.num_to_bool {
-                out.push(Value::Bool(*u != 0));
-            }
-        }
-        Value::U16(u) => {
-            out.extend([
-                Value::U64(*u as u64),
-                Value::U32(*u as u32),
-                Value::U8(*u as u8),
-                Value::I16(*u as i16),
-                Value::I32(*u as i32),
-                Value::I64(*u as i64),
-                Value::F64(*u as f64),
-                Value::F32(*u as f32),
-            ]);
-            if flags.num_to_bool {
-                out.push(Value::Bool(*u != 0));
-            }
-        }
-        Value::U32(u) => {
-            out.extend([
-                Value::U64(*u as u64),
-                Value::U16(*u as u16),
-                Value::U8(*u as u8),
-                Value::I32(*u as i32),
-                Value::I64(*u as i64),
-                Value::F64(*u as f64),
-                Value::F32(*u as f32),
-            ]);
-            if flags.num_to_bool {
-                out.push(Value::Bool(*u != 0));
-            }
-        }
-        Value::U64(u) => {
-            out.extend([
-                Value::U32(*u as u32),
-                Value::U16(*u as u16),
-                Value::U8(*u as u8),
-                Value::I64(*u as i64),
-                Value::I32(*u as i32),
-                Value::F64(*u as f64),
-                Value::F32(*u as f32),
-            ]);
-            if flags.num_to_bool {
-                out.push(Value::Bool(*u != 0));
-            }
-        }
+        Value::F32(f) => push_float_alternatives(&mut out, *f as f64, lossless),
+        Value::F64(f) => push_float_alternatives(&mut out, *f, lossless),
+        Value::I8(i) => push_signed_int_alternatives(&mut out, *i as i128, lossless),
+        Value::I16(i) => push_signed_int_alternatives(&mut out, *i as i128, lossless),
+        Value::I32(i) => push_signed_int_alternatives(&mut out, *i as i128, lossless),
+        Value::I64(i) => push_signed_int_alternatives(&mut out, *i as i128, lossless),
+        Value::U8(u) => push_unsigned_int_alternatives(&mut out, *u as u128, lossless),
+        Value::U16(u) => push_unsigned_int_alternatives(&mut out, *u as u128, lossless),
+        Value::U32(u) => push_unsigned_int_alternatives(&mut out, *u as u128, lossless),
+        Value::U64(u) => push_unsigned_int_alternatives(&mut out, *u as u128, lossless),
         Value::Bool(b) if flags.bool_to_num => {
             let n: i64 = if *b { 1 } else { 0 };
             out.extend([
@@ -364,7 +383,28 @@ fn coerce_alternatives(value: &Value, flags: CoerceFlags) -> Vec<Value> {
         }
         _ => {}
     }
+    if flags.num_to_bool {
+        if let Some(b) = value_as_bool(value) {
+            out.push(Value::Bool(b));
+        }
+    }
     out
+}
+
+fn value_as_bool(v: &Value) -> Option<bool> {
+    match v {
+        Value::I8(i) => Some(*i != 0),
+        Value::I16(i) => Some(*i != 0),
+        Value::I32(i) => Some(*i != 0),
+        Value::I64(i) => Some(*i != 0),
+        Value::U8(u) => Some(*u != 0),
+        Value::U16(u) => Some(*u != 0),
+        Value::U32(u) => Some(*u != 0),
+        Value::U64(u) => Some(*u != 0),
+        Value::F32(f) => Some(*f != 0.0),
+        Value::F64(f) => Some(*f != 0.0),
+        _ => None,
+    }
 }
 
 pub fn decode_field_coerce<T: DeserializeOwned>(

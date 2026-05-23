@@ -43,6 +43,50 @@ fn str_num_off_by_default_so_string_decode_fails() {
 }
 
 #[test]
+fn lossless_rejects_negative_float_to_u64() {
+    let v = Value::F64(-3.5);
+    let flags = CoerceFlags {
+        lossless: true,
+        ..Default::default()
+    };
+    let r: Result<u64, _> = decode_field_coerce("e", 0, "f", flags, Some(&v));
+    assert!(r.is_err(), "lossless mode must reject negative f64 -> u64");
+}
+
+#[test]
+fn lossless_accepts_exact_integer_float() {
+    let v = Value::F64(42.0);
+    let flags = CoerceFlags {
+        lossless: true,
+        ..Default::default()
+    };
+    let n: i64 = decode_field_coerce("e", 0, "f", flags, Some(&v)).unwrap();
+    assert_eq!(n, 42);
+}
+
+#[test]
+fn lossless_rejects_fractional_to_int() {
+    let v = Value::F64(3.5);
+    let flags = CoerceFlags {
+        lossless: true,
+        ..Default::default()
+    };
+    let r: Result<i64, _> = decode_field_coerce("e", 0, "f", flags, Some(&v));
+    assert!(r.is_err());
+}
+
+#[test]
+fn lossy_accepts_what_lossless_rejects() {
+    let v = Value::F64(-3.5);
+    let flags = CoerceFlags {
+        lossless: false,
+        ..Default::default()
+    };
+    let r: Result<u64, _> = decode_field_coerce("e", 0, "f", flags, Some(&v));
+    assert!(r.is_ok(), "lossy mode should let the truncated cast through");
+}
+
+#[test]
 fn str_num_decodes_true_false_to_bool() {
     let t = Value::String("true".into());
     let b: bool = decode_field_coerce(
