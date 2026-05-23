@@ -20,6 +20,7 @@ struct FieldOptions {
     nested: bool,
     skip: bool,
     extras: bool,
+    at: Option<usize>,
 }
 
 pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
@@ -44,8 +45,9 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
     let mut init_fields = Vec::new();
     let mut outgoing_statements = Vec::new();
     let mut has_extras = false;
+    let mut next_index: usize = 0;
 
-    for (index, field) in fields_named.named.iter().enumerate() {
+    for field in fields_named.named.iter() {
         let field_ident = field
             .ident
             .as_ref()
@@ -53,6 +55,21 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
         let field_ty = &field.ty;
         let field_name_string = field_ident.to_string();
         let field_options = parse_field_options(&field.attrs)?;
+
+        let index = if let Some(explicit) = field_options.at {
+            if explicit < next_index {
+                return Err(syn::Error::new_spanned(
+                    field,
+                    format!(
+                        "#[packet(at = {explicit})] is below the next available index {next_index} (indices must be monotonic)"
+                    ),
+                ));
+            }
+            explicit
+        } else {
+            next_index
+        };
+        next_index = index + 1;
 
         if field_options.extras {
             if has_extras {
@@ -138,26 +155,32 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
         });
 
         if !field_options.skip {
+            let wire_index = index + 1;
+            outgoing_statements.push(quote! {
+                while values.len() < #wire_index + 1 {
+                    values.push(serde_value::Value::Unit);
+                }
+            });
             if field_options.nested {
                 outgoing_statements.push(quote! {
-                    values.push(serde_value::Value::Seq(
+                    values[#wire_index] = serde_value::Value::Seq(
                         packet_core::OutgoingFields::to_field_values(&self.#field_ident)?
-                    ));
+                    );
                 });
             } else if let Some(spec) = &field_options.coerce {
                 let flags = crate::coerce::coerce_flags_tokens(spec);
                 outgoing_statements.push(quote! {
-                    values.push(packet_core::decode::encode_field_coerce(&self.#field_ident, #flags)?);
+                    values[#wire_index] = packet_core::decode::encode_field_coerce(&self.#field_ident, #flags)?;
                 });
             } else {
                 outgoing_statements.push(quote! {
-                    values.push(serde_value::to_value(&self.#field_ident)?);
+                    values[#wire_index] = serde_value::to_value(&self.#field_ident)?;
                 });
             }
         }
     }
 
-    let field_count = fields_named.named.len();
+    let field_count = next_index;
     let wrap_scalar = packet_options.scalar_as_seq;
 
     if has_extras && packet_options.allow_extra {
@@ -323,9 +346,15 @@ fn parse_field_options(attrs: &[Attribute]) -> syn::Result<FieldOptions> {
             } else if meta.path.is_ident("extras") {
                 options.extras = true;
                 Ok(())
+            } else if meta.path.is_ident("at") {
+                let value = meta.value()?;
+                let lit: LitInt = value.parse()?;
+                let n: usize = lit.base10_parse()?;
+                options.at = Some(n);
+                Ok(())
             } else {
                 Err(meta.error(
-                    "unsupported #[packet(...)] field option; supported: default, coerce, chunks(Type, N), nested, skip, extras",
+                    "unsupported #[packet(...)] field option; supported: default, coerce, chunks(Type, N), nested, skip, extras, at = N",
                 ))
             }
         })?;

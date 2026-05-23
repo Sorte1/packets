@@ -31,6 +31,27 @@ fn extras_empty_when_no_trailing_values() {
     assert!(v.rest.is_empty());
 }
 
+#[derive(Debug, Packet)]
+#[packet(event = "y")]
+struct WithAt {
+    a: i64,
+    #[packet(at = 3)]
+    far: i64,
+}
+
+#[test]
+fn at_skips_to_explicit_index() {
+    let payload = vec![
+        Value::I64(10),
+        Value::I64(99),
+        Value::I64(99),
+        Value::I64(42),
+    ];
+    let v = WithAt::decode_payload(&payload).unwrap();
+    assert_eq!(v.a, 10);
+    assert_eq!(v.far, 42);
+}
+
 #[test]
 fn extras_round_trip_via_outgoing() {
     let payload = vec![
