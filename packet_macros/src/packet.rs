@@ -19,6 +19,7 @@ struct FieldOptions {
     chunks: Option<(Type, LitInt, bool)>,
     nested: bool,
     skip: bool,
+    extras: bool,
 }
 
 pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
@@ -42,6 +43,7 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
     let mut decode_statements = Vec::new();
     let mut init_fields = Vec::new();
     let mut outgoing_statements = Vec::new();
+    let mut has_extras = false;
 
     for (index, field) in fields_named.named.iter().enumerate() {
         let field_ident = field
@@ -51,6 +53,26 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
         let field_ty = &field.ty;
         let field_name_string = field_ident.to_string();
         let field_options = parse_field_options(&field.attrs)?;
+
+        if field_options.extras {
+            if has_extras {
+                return Err(syn::Error::new_spanned(
+                    field,
+                    "only one #[packet(extras)] field is allowed",
+                ));
+            }
+            has_extras = true;
+
+            decode_statements.push(quote! {
+                let #field_ident: Vec<serde_value::Value> =
+                    payload.iter().skip(#index).cloned().collect();
+            });
+            init_fields.push(quote! { #field_ident });
+            outgoing_statements.push(quote! {
+                values.extend(self.#field_ident.iter().cloned());
+            });
+            continue;
+        }
 
         let decode_expr = if let Some((item_ty, chunk_size, zero_as_empty)) = &field_options.chunks {
             let fn_name = if *zero_as_empty {
@@ -138,7 +160,14 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
     let field_count = fields_named.named.len();
     let wrap_scalar = packet_options.scalar_as_seq;
 
-    let extra_field_check = if packet_options.allow_extra {
+    if has_extras && packet_options.allow_extra {
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "#[packet(allow_extra)] is redundant when an #[packet(extras)] field is present; remove allow_extra",
+        ));
+    }
+
+    let extra_field_check = if packet_options.allow_extra || has_extras {
         quote! {}
     } else {
         quote! {
@@ -291,9 +320,12 @@ fn parse_field_options(attrs: &[Attribute]) -> syn::Result<FieldOptions> {
             } else if meta.path.is_ident("skip") {
                 options.skip = true;
                 Ok(())
+            } else if meta.path.is_ident("extras") {
+                options.extras = true;
+                Ok(())
             } else {
                 Err(meta.error(
-                    "unsupported #[packet(...)] field option; supported: default, coerce, chunks(Type, N), nested, skip",
+                    "unsupported #[packet(...)] field option; supported: default, coerce, chunks(Type, N), nested, skip, extras",
                 ))
             }
         })?;
