@@ -1,7 +1,8 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    Attribute, Data, DeriveInput, Fields, GenericArgument, LitInt, LitStr, PathArguments, Type,
+    Attribute, Data, DeriveInput, Fields, GenericArgument, LitInt, LitStr, Path, PathArguments,
+    Type,
 };
 
 #[derive(Debug, Default)]
@@ -21,6 +22,7 @@ struct FieldOptions {
     skip: bool,
     extras: bool,
     at: Option<usize>,
+    default_with: Option<Path>,
 }
 
 pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
@@ -91,7 +93,18 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
             continue;
         }
 
-        let decode_expr = if let Some((item_ty, chunk_size, zero_as_empty)) = &field_options.chunks {
+        let decode_expr = if let Some(path) = &field_options.default_with {
+            quote! {
+                match payload.get(#index) {
+                    Some(value) => packet_core::deserialize_value::<#field_ty>(value.clone())
+                        .map_err(|err| anyhow::anyhow!(
+                            "event {:?} field #{} {:?}: {}",
+                            #event_name, #index, #field_name_string, err
+                        ))?,
+                    None => #path(),
+                }
+            }
+        } else if let Some((item_ty, chunk_size, zero_as_empty)) = &field_options.chunks {
             let fn_name = if *zero_as_empty {
                 quote! { packet_core::decode::decode_chunks_zero_as_empty }
             } else {
@@ -352,9 +365,15 @@ fn parse_field_options(attrs: &[Attribute]) -> syn::Result<FieldOptions> {
                 let n: usize = lit.base10_parse()?;
                 options.at = Some(n);
                 Ok(())
+            } else if meta.path.is_ident("default_with") {
+                let value = meta.value()?;
+                let lit: LitStr = value.parse()?;
+                let path: Path = lit.parse()?;
+                options.default_with = Some(path);
+                Ok(())
             } else {
                 Err(meta.error(
-                    "unsupported #[packet(...)] field option; supported: default, coerce, chunks(Type, N), nested, skip, extras, at = N",
+                    "unsupported #[packet(...)] field option; supported: default, coerce, chunks(Type, N), nested, skip, extras, at = N, default_with = \"path\"",
                 ))
             }
         })?;

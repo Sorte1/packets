@@ -39,6 +39,31 @@ struct WithAt {
     far: i64,
 }
 
+fn default_minus_one() -> i64 {
+    -1
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "z")]
+struct WithDefault {
+    a: i64,
+    #[packet(default_with = "default_minus_one")]
+    b: i64,
+}
+
+#[test]
+fn default_with_fires_when_field_missing() {
+    let v = WithDefault::decode_payload(&[Value::I64(7)]).unwrap();
+    assert_eq!(v.a, 7);
+    assert_eq!(v.b, -1);
+}
+
+#[test]
+fn default_with_skipped_when_field_present() {
+    let v = WithDefault::decode_payload(&[Value::I64(7), Value::I64(9)]).unwrap();
+    assert_eq!(v.b, 9);
+}
+
 #[test]
 fn at_skips_to_explicit_index() {
     let payload = vec![
