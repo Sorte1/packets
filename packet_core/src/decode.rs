@@ -191,6 +191,7 @@ pub fn decode_chunks_zero_as_empty<T: DeserializeOwned>(
 pub struct CoerceFlags {
     pub num_to_bool: bool,
     pub bool_to_num: bool,
+    pub str_num: bool,
 }
 
 fn coerce_alternatives(value: &Value, flags: CoerceFlags) -> Vec<Value> {
@@ -344,6 +345,22 @@ fn coerce_alternatives(value: &Value, flags: CoerceFlags) -> Vec<Value> {
                 Value::I32(n as i32),
                 Value::U8(n as u8),
             ]);
+        }
+        Value::String(s) if flags.str_num => {
+            if let Ok(i) = s.parse::<i64>() {
+                out.push(Value::I64(i));
+            }
+            if let Ok(u) = s.parse::<u64>() {
+                out.push(Value::U64(u));
+            }
+            if let Ok(f) = s.parse::<f64>() {
+                out.push(Value::F64(f));
+            }
+            match s.as_str() {
+                "true" => out.push(Value::Bool(true)),
+                "false" => out.push(Value::Bool(false)),
+                _ => {}
+            }
         }
         _ => {}
     }

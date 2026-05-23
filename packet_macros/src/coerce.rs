@@ -6,6 +6,7 @@ use syn::meta::ParseNestedMeta;
 pub struct CoerceSpec {
     pub num_to_bool: bool,
     pub bool_to_num: bool,
+    pub str_num: bool,
 }
 
 pub fn parse_coerce_meta(meta: &ParseNestedMeta) -> syn::Result<CoerceSpec> {
@@ -18,12 +19,13 @@ pub fn parse_coerce_meta(meta: &ParseNestedMeta) -> syn::Result<CoerceSpec> {
             match ident.to_string().as_str() {
                 "num_to_bool" => spec.num_to_bool = true,
                 "bool_to_num" => spec.bool_to_num = true,
+                "str_num" => spec.str_num = true,
                 other => {
                     return Err(syn::Error::new(
                         ident.span(),
                         format!(
-                        "unknown coerce strategy {other:?}; supported: num_to_bool, bool_to_num"
-                    ),
+                            "unknown coerce strategy {other:?}; supported: num_to_bool, bool_to_num, str_num"
+                        ),
                     ))
                 }
             }
@@ -47,10 +49,12 @@ pub fn parse_coerce_meta(meta: &ParseNestedMeta) -> syn::Result<CoerceSpec> {
 pub fn coerce_flags_tokens(spec: &CoerceSpec) -> TokenStream {
     let num_to_bool = spec.num_to_bool;
     let bool_to_num = spec.bool_to_num;
+    let str_num = spec.str_num;
     quote! {
         packet_core::decode::CoerceFlags {
             num_to_bool: #num_to_bool,
             bool_to_num: #bool_to_num,
+            str_num: #str_num,
         }
     }
 }
