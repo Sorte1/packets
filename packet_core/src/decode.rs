@@ -115,6 +115,88 @@ pub fn decode_chunks<T: DeserializeOwned>(
     Ok(items)
 }
 
+pub fn decode_var_chunks<T: DeserializeOwned>(
+    event: &'static str,
+    field_index: usize,
+    field_name: &'static str,
+    raw: Option<&Value>,
+) -> Result<Vec<T>, DecodeError> {
+    let value = raw.ok_or_else(|| {
+        DecodeError::from(DecodeErrorKind::Missing {
+            event,
+            field: field_name,
+            idx: field_index,
+        })
+    })?;
+
+    let seq = match value {
+        Value::Seq(seq) => seq,
+        other => {
+            return Err(DecodeError::from(DecodeErrorKind::TypeMismatch {
+                event,
+                field: field_name,
+                idx: field_index,
+                expected: "seq",
+                got: crate::error::ValueKind::of(other),
+            }));
+        }
+    };
+
+    let mut items: Vec<T> = Vec::new();
+    let mut i = 0usize;
+    let mut chunk_idx = 0usize;
+    while i < seq.len() {
+        let count = chunk_count_from(&seq[i]).ok_or_else(|| {
+            let mut err = DecodeError::custom(format!(
+                "event {:?} field {:?}: expected numeric chunk length at position {}, got {:?}",
+                event, field_name, i, &seq[i]
+            ));
+            err.prepend(PathSegment::Chunk(chunk_idx));
+            err
+        })?;
+        i += 1;
+        if i + count > seq.len() {
+            let mut err = DecodeError::custom(format!(
+                "event {:?} field {:?}: chunk declares {} values but only {} remain",
+                event,
+                field_name,
+                count,
+                seq.len() - i
+            ));
+            err.prepend(PathSegment::Chunk(chunk_idx));
+            return Err(err);
+        }
+        let chunk_values = seq[i..i + count].to_vec();
+        let val = crate::normalize_value(Value::Seq(chunk_values));
+        let item = T::deserialize(val).map_err(|e| {
+            let mut err = DecodeError::custom(format!(
+                "event {:?} field {:?}: failed to decode var chunk: {}",
+                event, field_name, e
+            ));
+            err.prepend(PathSegment::Chunk(chunk_idx));
+            err
+        })?;
+        items.push(item);
+        i += count;
+        chunk_idx += 1;
+    }
+    Ok(items)
+}
+
+fn chunk_count_from(v: &Value) -> Option<usize> {
+    match v {
+        Value::U8(n) => Some(*n as usize),
+        Value::U16(n) => Some(*n as usize),
+        Value::U32(n) => Some(*n as usize),
+        Value::U64(n) => Some(*n as usize),
+        Value::I8(n) if *n >= 0 => Some(*n as usize),
+        Value::I16(n) if *n >= 0 => Some(*n as usize),
+        Value::I32(n) if *n >= 0 => Some(*n as usize),
+        Value::I64(n) if *n >= 0 => Some(*n as usize),
+        _ => None,
+    }
+}
+
 fn is_zero_value(v: &Value) -> bool {
     matches!(
         v,

@@ -19,6 +19,7 @@ struct FieldOptions {
     default: bool,
     coerce: Option<crate::coerce::CoerceSpec>,
     chunks: Option<(Type, LitInt, bool)>,
+    var_chunks: Option<Type>,
     nested: bool,
     skip: bool,
     extras: bool,
@@ -99,7 +100,16 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
             continue;
         }
 
-        let decode_expr = if let Some(path) = &field_options.default_with {
+        let decode_expr = if let Some(item_ty) = &field_options.var_chunks {
+            quote! {
+                packet_core::decode::decode_var_chunks::<#item_ty>(
+                    #event_name,
+                    #index,
+                    #field_name_string,
+                    payload.get(#index),
+                )?
+            }
+        } else if let Some(path) = &field_options.default_with {
             quote! {
                 match payload.get(#index) {
                     Some(value) => packet_core::deserialize_value::<#field_ty>(value.clone())
@@ -508,9 +518,15 @@ fn parse_field_options(attrs: &[Attribute]) -> syn::Result<FieldOptions> {
                 let lit: LitStr = value.parse()?;
                 options.rename = Some(lit.value());
                 Ok(())
+            } else if meta.path.is_ident("var_chunks") {
+                let content;
+                syn::parenthesized!(content in meta.input);
+                let item_ty: Type = content.parse()?;
+                options.var_chunks = Some(item_ty);
+                Ok(())
             } else {
                 Err(meta.error(
-                    "unsupported #[packet(...)] field option; supported: default, coerce, chunks(Type, N), nested, skip, extras, at = N, default_with = \"path\", rename = \"name\"",
+                    "unsupported #[packet(...)] field option; supported: default, coerce, chunks(Type, N), var_chunks(Type), nested, skip, extras, at = N, default_with = \"path\", rename = \"name\"",
                 ))
             }
         })?;
