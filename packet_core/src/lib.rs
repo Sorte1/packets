@@ -6,6 +6,7 @@ use serde_value::Value;
 pub mod decode;
 pub mod error;
 pub mod fmt;
+pub mod oneof;
 pub mod sentinel;
 pub mod wire;
 
