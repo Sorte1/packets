@@ -5,7 +5,10 @@ use serde_value::Value;
 use std::fmt;
 
 pub mod decode;
+pub mod error;
 pub mod wire;
+
+pub use error::{DecodeError, DecodeErrorKind, ValueKind};
 
 pub trait PacketMeta {
     const EVENT_NAME: &'static str;

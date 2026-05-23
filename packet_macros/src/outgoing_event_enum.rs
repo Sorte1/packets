@@ -94,7 +94,7 @@ pub fn expand_outgoing_event_enum(input: DeriveInput) -> syn::Result<TokenStream
     let passthrough_variant = unknown_decode_arm.unwrap_or_else(|| {
         quote! { compile_error!("OutgoingEventEnum requires a #[event(unknown)] variant") }
     });
-    let unknown_encode_arm = unknown_encode_arm.unwrap_or_else(TokenStream::new);
+    let unknown_encode_arm = unknown_encode_arm.unwrap_or_default();
 
     Ok(quote! {
         impl packet_core::OutgoingEventEnum for #enum_name {

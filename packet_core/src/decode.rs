@@ -1,7 +1,8 @@
-use anyhow::{anyhow, bail, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_value::Value;
+
+use crate::error::{DecodeError, DecodeErrorKind};
 
 pub fn scalar_as_seq(payload: &[Value]) -> Vec<Value> {
     match payload {
@@ -26,19 +27,20 @@ pub fn decode_field<T: DeserializeOwned>(
     field_index: usize,
     field_name: &'static str,
     raw: Option<&Value>,
-) -> Result<T> {
-    let value = raw
-        .cloned()
-        .ok_or_else(|| anyhow!("missing required field {} ({})", field_index, field_name))?;
-
-    crate::deserialize_value(value).map_err(|err| {
-        anyhow!(
-            "failed to decode event {:?} field #{} {:?}: {}",
+) -> Result<T, DecodeError> {
+    let value = raw.ok_or_else(|| {
+        DecodeError::from(DecodeErrorKind::Missing {
             event,
-            field_index,
-            field_name,
-            err
-        )
+            field: field_name,
+            idx: field_index,
+        })
+    })?;
+
+    crate::deserialize_value(value.clone()).map_err(|err| {
+        DecodeError::custom(format!(
+            "event {:?} field #{} {:?}: {}",
+            event, field_index, field_name, err
+        ))
     })
 }
 
@@ -47,16 +49,13 @@ pub fn decode_field_with_default<T: DeserializeOwned + Default>(
     field_index: usize,
     field_name: &'static str,
     raw: Option<&Value>,
-) -> Result<T> {
+) -> Result<T, DecodeError> {
     match raw {
         Some(value) => crate::deserialize_value(value.clone()).map_err(|err| {
-            anyhow!(
-                "failed to decode event {:?} field #{} {:?}: {}",
-                event,
-                field_index,
-                field_name,
-                err
-            )
+            DecodeError::custom(format!(
+                "event {:?} field #{} {:?}: {}",
+                event, field_index, field_name, err
+            ))
         }),
         None => Ok(T::default()),
     }
@@ -68,46 +67,46 @@ pub fn decode_chunks<T: DeserializeOwned>(
     field_name: &'static str,
     chunk_size: usize,
     raw: Option<&Value>,
-) -> Result<Vec<T>> {
-    let value = raw.cloned().ok_or_else(|| {
-        anyhow!(
-            "event {:?} field #{} {:?}: missing required chunks field",
+) -> Result<Vec<T>, DecodeError> {
+    let value = raw.ok_or_else(|| {
+        DecodeError::from(DecodeErrorKind::Missing {
             event,
-            field_index,
-            field_name
-        )
+            field: field_name,
+            idx: field_index,
+        })
     })?;
 
     let seq = match value {
         Value::Seq(seq) => seq,
-        other => bail!(
-            "event {:?} field {:?}: expected a sequence for chunks field, got {:?}",
-            event,
-            field_name,
-            other
-        ),
+        other => {
+            return Err(DecodeError::from(DecodeErrorKind::TypeMismatch {
+                event,
+                field: field_name,
+                idx: field_index,
+                expected: "seq",
+                got: crate::error::ValueKind::of(other),
+            }));
+        }
     };
 
     if seq.len() % chunk_size != 0 {
-        bail!(
-            "event {:?} field {:?}: expected a multiple of {} elements, got {}",
+        return Err(DecodeError::from(DecodeErrorKind::ChunkSize {
             event,
-            field_name,
-            chunk_size,
-            seq.len()
-        );
+            field: field_name,
+            idx: field_index,
+            expected_multiple_of: chunk_size,
+            got: seq.len(),
+        }));
     }
 
     let mut items = Vec::with_capacity(seq.len() / chunk_size);
     for chunk in seq.chunks(chunk_size) {
         let val = crate::normalize_value(Value::Seq(chunk.to_vec()));
         let item = T::deserialize(val).map_err(|e| {
-            anyhow!(
+            DecodeError::custom(format!(
                 "event {:?} field {:?}: failed to decode chunk item: {}",
-                event,
-                field_name,
-                e
-            )
+                event, field_name, e
+            ))
         })?;
         items.push(item);
     }
@@ -134,50 +133,50 @@ pub fn decode_chunks_zero_as_empty<T: DeserializeOwned>(
     field_name: &'static str,
     chunk_size: usize,
     raw: Option<&Value>,
-) -> Result<Vec<T>> {
-    let value = raw.cloned().ok_or_else(|| {
-        anyhow!(
-            "event {:?} field #{} {:?}: missing required chunks field",
+) -> Result<Vec<T>, DecodeError> {
+    let value = raw.ok_or_else(|| {
+        DecodeError::from(DecodeErrorKind::Missing {
             event,
-            field_index,
-            field_name
-        )
+            field: field_name,
+            idx: field_index,
+        })
     })?;
 
-    if is_zero_value(&value) {
+    if is_zero_value(value) {
         return Ok(Vec::new());
     }
 
     let seq = match value {
         Value::Seq(seq) => seq,
-        other => bail!(
-            "event {:?} field {:?}: expected a sequence or 0 for chunks field, got {:?}",
-            event,
-            field_name,
-            other
-        ),
+        other => {
+            return Err(DecodeError::from(DecodeErrorKind::TypeMismatch {
+                event,
+                field: field_name,
+                idx: field_index,
+                expected: "seq or 0",
+                got: crate::error::ValueKind::of(other),
+            }));
+        }
     };
 
     if seq.len() % chunk_size != 0 {
-        bail!(
-            "event {:?} field {:?}: expected a multiple of {} elements, got {}",
+        return Err(DecodeError::from(DecodeErrorKind::ChunkSize {
             event,
-            field_name,
-            chunk_size,
-            seq.len()
-        );
+            field: field_name,
+            idx: field_index,
+            expected_multiple_of: chunk_size,
+            got: seq.len(),
+        }));
     }
 
     let mut items = Vec::with_capacity(seq.len() / chunk_size);
     for chunk in seq.chunks(chunk_size) {
         let val = crate::normalize_value(Value::Seq(chunk.to_vec()));
         let item = T::deserialize(val).map_err(|e| {
-            anyhow!(
+            DecodeError::custom(format!(
                 "event {:?} field {:?}: failed to decode chunk item: {}",
-                event,
-                field_name,
-                e
-            )
+                event, field_name, e
+            ))
         })?;
         items.push(item);
     }
@@ -333,16 +332,14 @@ fn coerce_alternatives(value: &Value, flags: CoerceFlags) -> Vec<Value> {
                 out.push(Value::Bool(*u != 0));
             }
         }
-        Value::Bool(b) => {
-            if flags.bool_to_num {
-                let n: i64 = if *b { 1 } else { 0 };
-                out.extend([
-                    Value::I64(n),
-                    Value::U64(n as u64),
-                    Value::I32(n as i32),
-                    Value::U8(n as u8),
-                ]);
-            }
+        Value::Bool(b) if flags.bool_to_num => {
+            let n: i64 = if *b { 1 } else { 0 };
+            out.extend([
+                Value::I64(n),
+                Value::U64(n as u64),
+                Value::I32(n as i32),
+                Value::U8(n as u8),
+            ]);
         }
         _ => {}
     }
@@ -355,29 +352,30 @@ pub fn decode_field_coerce<T: DeserializeOwned>(
     field_name: &'static str,
     flags: CoerceFlags,
     raw: Option<&Value>,
-) -> Result<T> {
-    let value = raw
-        .cloned()
-        .ok_or_else(|| anyhow!("missing required field {} ({})", field_index, field_name))?;
+) -> Result<T, DecodeError> {
+    let value = raw.ok_or_else(|| {
+        DecodeError::from(DecodeErrorKind::Missing {
+            event,
+            field: field_name,
+            idx: field_index,
+        })
+    })?;
 
     if let Ok(result) = crate::deserialize_value::<T>(value.clone()) {
         return Ok(result);
     }
 
-    for alt in coerce_alternatives(&value, flags) {
+    for alt in coerce_alternatives(value, flags) {
         if let Ok(result) = crate::deserialize_value::<T>(alt) {
             return Ok(result);
         }
     }
 
-    crate::deserialize_value(value).map_err(|err| {
-        anyhow!(
-            "failed to decode event {:?} field #{} {:?} (with coercion): {}",
-            event,
-            field_index,
-            field_name,
-            err
-        )
+    crate::deserialize_value::<T>(value.clone()).map_err(|err| {
+        DecodeError::custom(format!(
+            "event {:?} field #{} {:?} (with coercion): {}",
+            event, field_index, field_name, err
+        ))
     })
 }
 
@@ -398,7 +396,7 @@ fn apply_encode_coerce(value: Value, flags: CoerceFlags) -> Value {
     }
 }
 
-pub fn encode_field_coerce<T: Serialize>(value: &T, flags: CoerceFlags) -> Result<Value> {
+pub fn encode_field_coerce<T: Serialize>(value: &T, flags: CoerceFlags) -> anyhow::Result<Value> {
     let raw = serde_value::to_value(value)?;
     Ok(apply_encode_coerce(raw, flags))
 }
@@ -408,7 +406,7 @@ pub fn decode_optional_field<T: DeserializeOwned>(
     field_index: usize,
     field_name: &'static str,
     raw: Option<&Value>,
-) -> Result<Option<T>> {
+) -> Result<Option<T>, DecodeError> {
     match raw {
         None => Ok(None),
         Some(Value::Unit) => Ok(None),
@@ -416,13 +414,10 @@ pub fn decode_optional_field<T: DeserializeOwned>(
         Some(value) => crate::deserialize_value(value.clone())
             .map(Some)
             .map_err(|err| {
-                anyhow!(
-                    "failed to decode event {:?} field #{} {:?}: {}",
-                    event,
-                    field_index,
-                    field_name,
-                    err
-                )
+                DecodeError::custom(format!(
+                    "event {:?} field #{} {:?}: {}",
+                    event, field_index, field_name, err
+                ))
             }),
     }
 }
