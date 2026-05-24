@@ -21,6 +21,8 @@ enum Cmd {
         file: Option<PathBuf>,
         #[arg(long)]
         map: bool,
+        #[arg(long)]
+        explain: bool,
         input: Option<String>,
     },
     Drift {
@@ -31,12 +33,17 @@ enum Cmd {
 fn main() -> Result<()> {
     let Cli { cmd } = Cli::parse();
     match cmd {
-        Cmd::Decode { file, map, input } => decode(file, map, input),
+        Cmd::Decode {
+            file,
+            map,
+            explain,
+            input,
+        } => decode(file, map, explain, input),
         Cmd::Drift { corpus } => drift(corpus),
     }
 }
 
-fn decode(file: Option<PathBuf>, map: bool, input: Option<String>) -> Result<()> {
+fn decode(file: Option<PathBuf>, map: bool, explain: bool, input: Option<String>) -> Result<()> {
     let bytes = read_bytes(file, input)?;
     let (values, trailer) = unpack_frame(&bytes)?;
 
@@ -46,15 +53,33 @@ fn decode(file: Option<PathBuf>, map: bool, input: Option<String>) -> Result<()>
         None => "<empty>",
     };
 
+    println!("event:   {event}");
+    println!("trailer: {:02x} {:02x}", trailer[0], trailer[1]);
+
+    if explain {
+        println!("payload: {} value(s)", values.len().saturating_sub(1));
+        for (i, v) in values.iter().skip(1).enumerate() {
+            let kind = ValueKind::of(v);
+            let extra = match v {
+                Value::Seq(s) => format!(" len={}", s.len()),
+                Value::Map(m) => format!(" len={}", m.len()),
+                Value::String(s) => format!(" len={}", s.len()),
+                Value::Bytes(b) => format!(" len={}", b.len()),
+                _ => String::new(),
+            };
+            println!(
+                "  [{i}] <{kind}>{extra} {}",
+                packet_core::fmt::pretty(v, 120)
+            );
+        }
+        return Ok(());
+    }
+
     if map {
-        println!("event:   {event}");
-        println!("trailer: {:02x} {:02x}", trailer[0], trailer[1]);
         print!("{}", packet_core::fmt::snapshot_payload(&values[1..]));
         return Ok(());
     }
 
-    println!("event:   {event}");
-    println!("trailer: {:02x} {:02x}", trailer[0], trailer[1]);
     println!("payload: {} value(s)", values.len().saturating_sub(1));
     for (i, v) in values.iter().skip(1).enumerate() {
         println!("  [{i}] {v:?}");
