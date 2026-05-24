@@ -94,5 +94,8 @@ fn chunked_field_failure_includes_chunk_index_in_path() {
     ]);
     let err = decode_chunks::<Item>("evt", 0, "items", 2, Some(&raw)).unwrap_err();
     let s = err.to_string();
-    assert!(s.contains("[1]"), "expected chunk index 1 in path, got: {s}");
+    assert!(
+        s.contains("[1]"),
+        "expected chunk index 1 in path, got: {s}"
+    );
 }

@@ -36,17 +36,11 @@ pub fn decode_payload_traced<T: PacketDecode>(
 ) -> (anyhow::Result<T>, DecodeTrace) {
     TRACE_SINK.with(|sink| *sink.borrow_mut() = Some(DecodeTrace::default()));
     let result = T::decode_payload(payload);
-    let trace =
-        TRACE_SINK.with(|sink| sink.borrow_mut().take().unwrap_or_default());
+    let trace = TRACE_SINK.with(|sink| sink.borrow_mut().take().unwrap_or_default());
     (result, trace)
 }
 
-pub fn record_field(
-    event: &'static str,
-    field: &'static str,
-    idx: usize,
-    kind: FieldDecodeKind,
-) {
+pub fn record_field(event: &'static str, field: &'static str, idx: usize, kind: FieldDecodeKind) {
     #[cfg(feature = "tracing")]
     tracing::trace!(target: "packet_core::decode", event, field, idx, ?kind, "field decoded");
 
@@ -67,11 +61,7 @@ impl DecodeTrace {
         use std::fmt::Write as _;
         let mut s = String::new();
         for f in &self.fields {
-            let _ = writeln!(
-                s,
-                "{:?}.{} #{} -> {:?}",
-                f.event, f.field, f.idx, f.kind
-            );
+            let _ = writeln!(s, "{:?}.{} #{} -> {:?}", f.event, f.field, f.idx, f.kind);
         }
         s
     }

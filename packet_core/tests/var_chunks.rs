@@ -19,10 +19,7 @@ fn var_chunks_parses_length_prefixed_records() {
         Value::I64(40),
     ]);
     let rows: Vec<Row> = decode_var_chunks("e", 0, "rows", Some(&payload)).unwrap();
-    assert_eq!(
-        rows,
-        vec![Row { a: 10, b: 20 }, Row { a: 30, b: 40 }]
-    );
+    assert_eq!(rows, vec![Row { a: 10, b: 20 }, Row { a: 30, b: 40 }]);
 }
 
 #[test]

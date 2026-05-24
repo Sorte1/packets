@@ -95,7 +95,9 @@ pub enum DecodeErrorKind {
         got: ValueKind,
     },
 
-    #[error("event {event:?} field #{idx} {field:?}: failed to decode (tried {tried:?}): {source}")]
+    #[error(
+        "event {event:?} field #{idx} {field:?}: failed to decode (tried {tried:?}): {source}"
+    )]
     Coercion {
         event: &'static str,
         field: &'static str,

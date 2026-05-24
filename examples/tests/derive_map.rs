@@ -15,10 +15,7 @@ struct InMap {
 
 fn map_payload() -> Vec<Value> {
     let mut m = std::collections::BTreeMap::new();
-    m.insert(
-        Value::String("name".into()),
-        Value::String("alice".into()),
-    );
+    m.insert(Value::String("name".into()), Value::String("alice".into()));
     m.insert(Value::String("score".into()), Value::I64(42));
     m.insert(
         Value::String("tier-name".into()),
@@ -48,10 +45,7 @@ fn map_mode_round_trips_via_outgoing() {
 #[test]
 fn map_mode_fails_on_missing_required_field() {
     let mut m = std::collections::BTreeMap::new();
-    m.insert(
-        Value::String("name".into()),
-        Value::String("alice".into()),
-    );
+    m.insert(Value::String("name".into()), Value::String("alice".into()));
     let payload = vec![Value::Map(m.into_iter().collect())];
     let r = InMap::decode_payload(&payload);
     assert!(r.is_err());

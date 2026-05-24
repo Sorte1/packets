@@ -212,14 +212,10 @@ pub trait OutgoingEventEnum: Sized {
         };
         let event = match Self::try_from_event(&event_name, &values[1..]) {
             Some(Ok(v)) => v,
-            Some(Err(e)) => Self::passthrough(PassthroughInfo::decode_failed(
-                data.to_vec(),
-                e.to_string(),
-            )),
-            None => Self::passthrough(PassthroughInfo::unknown_event(
-                data.to_vec(),
-                event_name,
-            )),
+            Some(Err(e)) => {
+                Self::passthrough(PassthroughInfo::decode_failed(data.to_vec(), e.to_string()))
+            }
+            None => Self::passthrough(PassthroughInfo::unknown_event(data.to_vec(), event_name)),
         };
         Ok((event, trailer))
     }

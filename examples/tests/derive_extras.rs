@@ -12,11 +12,7 @@ struct WithExtras {
 
 #[test]
 fn extras_collects_trailing_payload() {
-    let payload = vec![
-        Value::I64(1),
-        Value::I64(2),
-        Value::String("third".into()),
-    ];
+    let payload = vec![Value::I64(1), Value::I64(2), Value::String("third".into())];
     let v = WithExtras::decode_payload(&payload).unwrap();
     assert_eq!(v.a, 1);
     assert_eq!(v.rest.len(), 2);
@@ -114,11 +110,7 @@ fn at_skips_to_explicit_index() {
 
 #[test]
 fn extras_round_trip_via_outgoing() {
-    let payload = vec![
-        Value::I64(1),
-        Value::I64(2),
-        Value::String("third".into()),
-    ];
+    let payload = vec![Value::I64(1), Value::I64(2), Value::String("third".into())];
     let v = WithExtras::decode_payload(&payload).unwrap();
     let out = v.to_values().unwrap();
     assert_eq!(out.len(), 4);

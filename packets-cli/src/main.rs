@@ -137,8 +137,16 @@ fn drift(corpus: PathBuf) -> Result<()> {
                 let payload = &values[1..];
                 let entry = schemas.entry(event_name).or_default();
                 entry.frame_count += 1;
-                entry.arity_min = Some(entry.arity_min.map_or(payload.len(), |m| m.min(payload.len())));
-                entry.arity_max = Some(entry.arity_max.map_or(payload.len(), |m| m.max(payload.len())));
+                entry.arity_min = Some(
+                    entry
+                        .arity_min
+                        .map_or(payload.len(), |m| m.min(payload.len())),
+                );
+                entry.arity_max = Some(
+                    entry
+                        .arity_max
+                        .map_or(payload.len(), |m| m.max(payload.len())),
+                );
                 if entry.field_kinds.len() < payload.len() {
                     entry.field_kinds.resize_with(payload.len(), BTreeSet::new);
                 }
@@ -247,8 +255,16 @@ fn infer(corpus: PathBuf) -> Result<()> {
             let payload = &values[1..];
             let entry = schemas.entry(event_name).or_default();
             entry.frame_count += 1;
-            entry.arity_min = Some(entry.arity_min.map_or(payload.len(), |m| m.min(payload.len())));
-            entry.arity_max = Some(entry.arity_max.map_or(payload.len(), |m| m.max(payload.len())));
+            entry.arity_min = Some(
+                entry
+                    .arity_min
+                    .map_or(payload.len(), |m| m.min(payload.len())),
+            );
+            entry.arity_max = Some(
+                entry
+                    .arity_max
+                    .map_or(payload.len(), |m| m.max(payload.len())),
+            );
             if entry.field_kinds.len() < payload.len() {
                 entry.field_kinds.resize_with(payload.len(), BTreeSet::new);
             }
@@ -345,12 +361,7 @@ fn read_corpus(bytes: &[u8]) -> Result<Vec<Vec<u8>>> {
         if bytes.len() - i < 4 {
             return Err(anyhow!("truncated length prefix at offset {i}"));
         }
-        let len = u32::from_be_bytes([
-            bytes[i],
-            bytes[i + 1],
-            bytes[i + 2],
-            bytes[i + 3],
-        ]) as usize;
+        let len = u32::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as usize;
         i += 4;
         if bytes.len() - i < len {
             return Err(anyhow!(

@@ -34,11 +34,7 @@ fn seq_truncates_when_over_budget() {
 #[test]
 fn snapshot_payload_renders_each_value_on_its_own_line() {
     use packet_core::fmt::snapshot_payload;
-    let payload = vec![
-        Value::String("ev".into()),
-        Value::I64(7),
-        Value::Bool(true),
-    ];
+    let payload = vec![Value::String("ev".into()), Value::I64(7), Value::Bool(true)];
     let s = snapshot_payload(&payload);
     let lines: Vec<&str> = s.lines().collect();
     assert_eq!(lines.len(), 3);

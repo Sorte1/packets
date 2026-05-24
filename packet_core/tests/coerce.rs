@@ -83,7 +83,10 @@ fn lossy_accepts_what_lossless_rejects() {
         ..Default::default()
     };
     let r: Result<u64, _> = decode_field_coerce("e", 0, "f", flags, Some(&v));
-    assert!(r.is_ok(), "lossy mode should let the truncated cast through");
+    assert!(
+        r.is_ok(),
+        "lossy mode should let the truncated cast through"
+    );
 }
 
 #[test]

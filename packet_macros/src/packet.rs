@@ -312,7 +312,10 @@ fn expand_map_mode(
             ));
         }
 
-        let lookup = opts.rename.clone().unwrap_or_else(|| field_ident.to_string());
+        let lookup = opts
+            .rename
+            .clone()
+            .unwrap_or_else(|| field_ident.to_string());
 
         if extract_option_inner(field_ty).is_some() {
             decode_statements.push(quote! {
