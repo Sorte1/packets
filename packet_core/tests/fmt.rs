@@ -32,6 +32,22 @@ fn seq_truncates_when_over_budget() {
 }
 
 #[test]
+fn snapshot_payload_renders_each_value_on_its_own_line() {
+    use packet_core::fmt::snapshot_payload;
+    let payload = vec![
+        Value::String("ev".into()),
+        Value::I64(7),
+        Value::Bool(true),
+    ];
+    let s = snapshot_payload(&payload);
+    let lines: Vec<&str> = s.lines().collect();
+    assert_eq!(lines.len(), 3);
+    assert!(lines[0].starts_with("[0]"));
+    assert!(lines[1].contains("7i64"));
+    assert!(lines[2].contains("true"));
+}
+
+#[test]
 fn map_keys_sorted_for_determinism() {
     let entries = vec![
         (Value::String("b".into()), Value::I64(2)),

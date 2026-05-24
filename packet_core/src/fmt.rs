@@ -10,6 +10,14 @@ pub fn pretty(value: &Value, max_len: usize) -> String {
     out
 }
 
+pub fn snapshot_payload(payload: &[Value]) -> String {
+    let mut out = String::new();
+    for (i, v) in payload.iter().enumerate() {
+        out.push_str(&format!("[{i}] {}\n", pretty(v, usize::MAX)));
+    }
+    out
+}
+
 fn write_value(out: &mut String, value: &Value, budget: usize) {
     match value {
         Value::Bool(b) => write!(out, "{b}").unwrap(),
