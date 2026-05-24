@@ -62,7 +62,7 @@ pub fn expand_outgoing_event_enum(input: DeriveInput) -> syn::Result<TokenStream
             });
 
             unknown_encode_arm = Some(quote! {
-                Self::#variant_ident(raw) => Ok(raw.clone()),
+                Self::#variant_ident(info) => Ok(info.bytes.clone()),
             });
 
             continue;
@@ -108,8 +108,8 @@ pub fn expand_outgoing_event_enum(input: DeriveInput) -> syn::Result<TokenStream
                 }
             }
 
-            fn passthrough(raw: Vec<u8>) -> Self {
-                Self::#passthrough_variant(raw)
+            fn passthrough(info: packet_core::PassthroughInfo) -> Self {
+                Self::#passthrough_variant(info)
             }
 
             fn to_frame(&self, trailer: [u8; 2]) -> anyhow::Result<Vec<u8>> {

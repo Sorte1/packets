@@ -153,23 +153,73 @@ impl<T: Default> From<T> for ZeroOrDefault<T> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct PassthroughInfo {
+    pub bytes: Vec<u8>,
+    pub reason: PassthroughReason,
+}
+
+#[derive(Debug, Clone)]
+pub enum PassthroughReason {
+    UnknownEvent(String),
+    DecodeFailed(String),
+    BadFrame(String),
+}
+
+impl PassthroughInfo {
+    pub fn unknown_event(bytes: Vec<u8>, event_name: impl Into<String>) -> Self {
+        Self {
+            bytes,
+            reason: PassthroughReason::UnknownEvent(event_name.into()),
+        }
+    }
+
+    pub fn decode_failed(bytes: Vec<u8>, err: impl Into<String>) -> Self {
+        Self {
+            bytes,
+            reason: PassthroughReason::DecodeFailed(err.into()),
+        }
+    }
+
+    pub fn bad_frame(bytes: Vec<u8>, err: impl Into<String>) -> Self {
+        Self {
+            bytes,
+            reason: PassthroughReason::BadFrame(err.into()),
+        }
+    }
+}
+
 pub trait OutgoingEventEnum: Sized {
     fn try_from_event(event_name: &str, payload: &[Value]) -> Option<Result<Self>>;
 
-    fn passthrough(raw: Vec<u8>) -> Self;
+    fn passthrough(info: PassthroughInfo) -> Self;
 
     fn to_frame(&self, trailer: [u8; 2]) -> Result<Vec<u8>>;
 
     fn from_frame(data: &[u8]) -> Result<(Self, [u8; 2])> {
-        let (values, trailer) = wire::unpack_frame(data)?;
+        let (values, trailer) = match wire::unpack_frame(data) {
+            Ok(v) => v,
+            Err(e) => {
+                let event =
+                    Self::passthrough(PassthroughInfo::bad_frame(data.to_vec(), e.to_string()));
+                return Ok((event, [0, 0]));
+            }
+        };
         let event_name = match values.first() {
             Some(Value::String(s)) => s.clone(),
             Some(other) => return Err(anyhow!("expected event name string, got {:?}", other)),
             None => return Err(anyhow!("empty msgpack frame")),
         };
         let event = match Self::try_from_event(&event_name, &values[1..]) {
-            Some(result) => result?,
-            None => Self::passthrough(data.to_vec()),
+            Some(Ok(v)) => v,
+            Some(Err(e)) => Self::passthrough(PassthroughInfo::decode_failed(
+                data.to_vec(),
+                e.to_string(),
+            )),
+            None => Self::passthrough(PassthroughInfo::unknown_event(
+                data.to_vec(),
+                event_name,
+            )),
         };
         Ok((event, trailer))
     }
