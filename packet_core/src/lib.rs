@@ -8,7 +8,10 @@ pub mod error;
 pub mod fmt;
 pub mod oneof;
 pub mod sentinel;
+pub mod trace;
 pub mod wire;
+
+pub use trace::{decode_payload_traced, DecodeTrace, FieldDecode, FieldDecodeKind};
 
 pub use error::{DecodeError, DecodeErrorKind, ValueKind};
 

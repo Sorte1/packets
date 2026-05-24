@@ -3,6 +3,7 @@ use serde::Serialize;
 use serde_value::Value;
 
 use crate::error::{DecodeError, DecodeErrorKind, PathSegment};
+use crate::trace::{record_field, FieldDecodeKind};
 
 pub fn scalar_as_seq(payload: &[Value]) -> Vec<Value> {
     match payload {
@@ -36,12 +37,14 @@ pub fn decode_field<T: DeserializeOwned>(
         })
     })?;
 
-    crate::deserialize_value(value.clone()).map_err(|err| {
+    let out = crate::deserialize_value(value.clone()).map_err(|err| {
         DecodeError::custom(format!(
             "event {:?} field #{} {:?}: {}",
             event, field_index, field_name, err
         ))
-    })
+    })?;
+    record_field(event, field_name, field_index, FieldDecodeKind::Direct);
+    Ok(out)
 }
 
 pub fn decode_field_with_default<T: DeserializeOwned + Default>(
@@ -51,13 +54,20 @@ pub fn decode_field_with_default<T: DeserializeOwned + Default>(
     raw: Option<&Value>,
 ) -> Result<T, DecodeError> {
     match raw {
-        Some(value) => crate::deserialize_value(value.clone()).map_err(|err| {
-            DecodeError::custom(format!(
-                "event {:?} field #{} {:?}: {}",
-                event, field_index, field_name, err
-            ))
-        }),
-        None => Ok(T::default()),
+        Some(value) => {
+            let out = crate::deserialize_value(value.clone()).map_err(|err| {
+                DecodeError::custom(format!(
+                    "event {:?} field #{} {:?}: {}",
+                    event, field_index, field_name, err
+                ))
+            })?;
+            record_field(event, field_name, field_index, FieldDecodeKind::Direct);
+            Ok(out)
+        }
+        None => {
+            record_field(event, field_name, field_index, FieldDecodeKind::Default);
+            Ok(T::default())
+        }
     }
 }
 
@@ -112,6 +122,12 @@ pub fn decode_chunks<T: DeserializeOwned>(
         })?;
         items.push(item);
     }
+    record_field(
+        event,
+        field_name,
+        field_index,
+        FieldDecodeKind::Chunks { count: items.len() },
+    );
     Ok(items)
 }
 
@@ -180,6 +196,12 @@ pub fn decode_var_chunks<T: DeserializeOwned>(
         i += count;
         chunk_idx += 1;
     }
+    record_field(
+        event,
+        field_name,
+        field_index,
+        FieldDecodeKind::VarChunks { count: items.len() },
+    );
     Ok(items)
 }
 
@@ -266,6 +288,12 @@ pub fn decode_chunks_zero_as_empty<T: DeserializeOwned>(
         })?;
         items.push(item);
     }
+    record_field(
+        event,
+        field_name,
+        field_index,
+        FieldDecodeKind::Chunks { count: items.len() },
+    );
     Ok(items)
 }
 
@@ -505,11 +533,28 @@ pub fn decode_field_coerce<T: DeserializeOwned>(
     })?;
 
     if let Ok(result) = crate::deserialize_value::<T>(value.clone()) {
+        record_field(
+            event,
+            field_name,
+            field_index,
+            FieldDecodeKind::Coerced {
+                alternatives_tried: 0,
+            },
+        );
         return Ok(result);
     }
 
-    for alt in coerce_alternatives(value, flags) {
-        if let Ok(result) = crate::deserialize_value::<T>(alt) {
+    let alternatives = coerce_alternatives(value, flags);
+    for (i, alt) in alternatives.iter().enumerate() {
+        if let Ok(result) = crate::deserialize_value::<T>(alt.clone()) {
+            record_field(
+                event,
+                field_name,
+                field_index,
+                FieldDecodeKind::Coerced {
+                    alternatives_tried: i + 1,
+                },
+            );
             return Ok(result);
         }
     }
@@ -551,16 +596,26 @@ pub fn decode_optional_field<T: DeserializeOwned>(
     raw: Option<&Value>,
 ) -> Result<Option<T>, DecodeError> {
     match raw {
-        None => Ok(None),
-        Some(Value::Unit) => Ok(None),
-        Some(Value::Option(None)) => Ok(None),
-        Some(value) => crate::deserialize_value(value.clone())
-            .map(Some)
-            .map_err(|err| {
-                DecodeError::custom(format!(
-                    "event {:?} field #{} {:?}: {}",
-                    event, field_index, field_name, err
-                ))
-            }),
+        None | Some(Value::Unit) | Some(Value::Option(None)) => {
+            record_field(
+                event,
+                field_name,
+                field_index,
+                FieldDecodeKind::OptionalNone,
+            );
+            Ok(None)
+        }
+        Some(value) => {
+            let out = crate::deserialize_value(value.clone())
+                .map(Some)
+                .map_err(|err| {
+                    DecodeError::custom(format!(
+                        "event {:?} field #{} {:?}: {}",
+                        event, field_index, field_name, err
+                    ))
+                })?;
+            record_field(event, field_name, field_index, FieldDecodeKind::Direct);
+            Ok(out)
+        }
     }
 }
