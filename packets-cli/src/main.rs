@@ -28,6 +28,12 @@ enum Cmd {
     Drift {
         corpus: PathBuf,
     },
+    Diff {
+        a: String,
+        b: String,
+        #[arg(long)]
+        files: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -40,6 +46,7 @@ fn main() -> Result<()> {
             input,
         } => decode(file, map, explain, input),
         Cmd::Drift { corpus } => drift(corpus),
+        Cmd::Diff { a, b, files } => diff(a, b, files),
     }
 }
 
@@ -157,6 +164,67 @@ fn drift(corpus: PathBuf) -> Result<()> {
             println!("  [{i}] {}{marker}", joined.join(" | "));
         }
         println!();
+    }
+    Ok(())
+}
+
+fn diff(a: String, b: String, files: bool) -> Result<()> {
+    let bytes_a = if files {
+        std::fs::read(&a).with_context(|| format!("reading {a}"))?
+    } else {
+        parse_hex(&a)?
+    };
+    let bytes_b = if files {
+        std::fs::read(&b).with_context(|| format!("reading {b}"))?
+    } else {
+        parse_hex(&b)?
+    };
+    let (va, ta) = unpack_frame(&bytes_a)?;
+    let (vb, tb) = unpack_frame(&bytes_b)?;
+    let name_a = match va.first() {
+        Some(Value::String(s)) => s.as_str(),
+        _ => "<none>",
+    };
+    let name_b = match vb.first() {
+        Some(Value::String(s)) => s.as_str(),
+        _ => "<none>",
+    };
+    if name_a != name_b {
+        println!("event   : {name_a:?}  vs  {name_b:?}  ⚠ different");
+    } else {
+        println!("event   : {name_a:?}");
+    }
+    if ta != tb {
+        println!(
+            "trailer : {:02x}{:02x}  vs  {:02x}{:02x}  ⚠",
+            ta[0], ta[1], tb[0], tb[1]
+        );
+    } else {
+        println!("trailer : {:02x}{:02x}", ta[0], ta[1]);
+    }
+    let pa = &va[1..];
+    let pb = &vb[1..];
+    let n = pa.len().max(pb.len());
+    for i in 0..n {
+        match (pa.get(i), pb.get(i)) {
+            (Some(av), Some(bv)) if av == bv => {
+                println!("  [{i}] = {}", packet_core::fmt::pretty(av, 80));
+            }
+            (Some(av), Some(bv)) => {
+                println!(
+                    "  [{i}] ≠ {}  →  {}",
+                    packet_core::fmt::pretty(av, 80),
+                    packet_core::fmt::pretty(bv, 80)
+                );
+            }
+            (Some(av), None) => {
+                println!("  [{i}] − {}", packet_core::fmt::pretty(av, 80));
+            }
+            (None, Some(bv)) => {
+                println!("  [{i}] + {}", packet_core::fmt::pretty(bv, 80));
+            }
+            (None, None) => {}
+        }
     }
     Ok(())
 }
