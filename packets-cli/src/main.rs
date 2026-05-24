@@ -1,7 +1,9 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
+use packet_core::error::ValueKind;
 use packet_core::wire::unpack_frame;
 use serde_value::Value;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::PathBuf;
 
@@ -19,12 +21,16 @@ enum Cmd {
         file: Option<PathBuf>,
         input: Option<String>,
     },
+    Drift {
+        corpus: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
     let Cli { cmd } = Cli::parse();
     match cmd {
         Cmd::Decode { file, input } => decode(file, input),
+        Cmd::Drift { corpus } => drift(corpus),
     }
 }
 
@@ -60,6 +66,91 @@ fn read_bytes(file: Option<PathBuf>, input: Option<String>) -> Result<Vec<u8>> {
         }
     };
     parse_hex(&raw)
+}
+
+#[derive(Default)]
+struct EventSchema {
+    frame_count: usize,
+    arity_min: Option<usize>,
+    arity_max: Option<usize>,
+    field_kinds: Vec<BTreeSet<String>>,
+}
+
+fn drift(corpus: PathBuf) -> Result<()> {
+    let bytes = std::fs::read(&corpus).with_context(|| format!("reading {}", corpus.display()))?;
+    let frames = read_corpus(&bytes)?;
+    let mut schemas: BTreeMap<String, EventSchema> = BTreeMap::new();
+    let mut bad_frames = 0usize;
+
+    for frame in &frames {
+        match unpack_frame(frame) {
+            Ok((values, _trailer)) => {
+                let event_name = match values.first() {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => "<no event name>".to_string(),
+                };
+                let payload = &values[1..];
+                let entry = schemas.entry(event_name).or_default();
+                entry.frame_count += 1;
+                entry.arity_min = Some(entry.arity_min.map_or(payload.len(), |m| m.min(payload.len())));
+                entry.arity_max = Some(entry.arity_max.map_or(payload.len(), |m| m.max(payload.len())));
+                if entry.field_kinds.len() < payload.len() {
+                    entry.field_kinds.resize_with(payload.len(), BTreeSet::new);
+                }
+                for (i, v) in payload.iter().enumerate() {
+                    entry.field_kinds[i].insert(ValueKind::of(v).to_string());
+                }
+            }
+            Err(_) => bad_frames += 1,
+        }
+    }
+
+    println!("frames        : {}", frames.len());
+    println!("bad frames    : {}", bad_frames);
+    println!("distinct evts : {}", schemas.len());
+    println!();
+
+    for (name, s) in &schemas {
+        let arity = match (s.arity_min, s.arity_max) {
+            (Some(lo), Some(hi)) if lo == hi => format!("{lo}"),
+            (Some(lo), Some(hi)) => format!("{lo}..{hi}  ⚠ variable"),
+            _ => "?".to_string(),
+        };
+        println!("event {name:?} ({} frames, arity {arity})", s.frame_count);
+        for (i, kinds) in s.field_kinds.iter().enumerate() {
+            let joined: Vec<&str> = kinds.iter().map(String::as_str).collect();
+            let marker = if joined.len() > 1 { "  ⚠ mixed" } else { "" };
+            println!("  [{i}] {}{marker}", joined.join(" | "));
+        }
+        println!();
+    }
+    Ok(())
+}
+
+fn read_corpus(bytes: &[u8]) -> Result<Vec<Vec<u8>>> {
+    let mut frames = Vec::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes.len() - i < 4 {
+            return Err(anyhow!("truncated length prefix at offset {i}"));
+        }
+        let len = u32::from_be_bytes([
+            bytes[i],
+            bytes[i + 1],
+            bytes[i + 2],
+            bytes[i + 3],
+        ]) as usize;
+        i += 4;
+        if bytes.len() - i < len {
+            return Err(anyhow!(
+                "truncated frame: declared {len} bytes, only {} remain",
+                bytes.len() - i
+            ));
+        }
+        frames.push(bytes[i..i + len].to_vec());
+        i += len;
+    }
+    Ok(frames)
 }
 
 fn parse_hex(input: &str) -> Result<Vec<u8>> {
