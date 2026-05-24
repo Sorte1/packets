@@ -19,6 +19,8 @@ enum Cmd {
     Decode {
         #[arg(short, long, value_name = "PATH")]
         file: Option<PathBuf>,
+        #[arg(long)]
+        map: bool,
         input: Option<String>,
     },
     Drift {
@@ -29,12 +31,12 @@ enum Cmd {
 fn main() -> Result<()> {
     let Cli { cmd } = Cli::parse();
     match cmd {
-        Cmd::Decode { file, input } => decode(file, input),
+        Cmd::Decode { file, map, input } => decode(file, map, input),
         Cmd::Drift { corpus } => drift(corpus),
     }
 }
 
-fn decode(file: Option<PathBuf>, input: Option<String>) -> Result<()> {
+fn decode(file: Option<PathBuf>, map: bool, input: Option<String>) -> Result<()> {
     let bytes = read_bytes(file, input)?;
     let (values, trailer) = unpack_frame(&bytes)?;
 
@@ -43,6 +45,13 @@ fn decode(file: Option<PathBuf>, input: Option<String>) -> Result<()> {
         Some(_) => "<not a string>",
         None => "<empty>",
     };
+
+    if map {
+        println!("event:   {event}");
+        println!("trailer: {:02x} {:02x}", trailer[0], trailer[1]);
+        print!("{}", packet_core::fmt::snapshot_payload(&values[1..]));
+        return Ok(());
+    }
 
     println!("event:   {event}");
     println!("trailer: {:02x} {:02x}", trailer[0], trailer[1]);
