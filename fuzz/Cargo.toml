@@ -12,6 +12,7 @@ anyhow = "1"
 libfuzzer-sys = "0.4"
 packet_core = { path = "../packet_core" }
 packet_macros = { path = "../packet_macros" }
+rmp-serde = "1"
 serde = { version = "1", features = ["derive"] }
 serde-value = "0.7"
 
@@ -32,6 +33,13 @@ bench = false
 [[bin]]
 name = "decode_typed"
 path = "fuzz_targets/decode_typed.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "valid_msgpack"
+path = "fuzz_targets/valid_msgpack.rs"
 test = false
 doc = false
 bench = false
