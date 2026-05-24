@@ -9,3 +9,8 @@ rmp-serde = "1"
 serde = { version = "1", features = ["derive"] }
 serde-value = "0.7"
 thiserror = "1"
+tracing = { version = "0.1", optional = true }
+
+[features]
+default = []
+tracing = ["dep:tracing"]

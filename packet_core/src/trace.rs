@@ -47,6 +47,9 @@ pub fn record_field(
     idx: usize,
     kind: FieldDecodeKind,
 ) {
+    #[cfg(feature = "tracing")]
+    tracing::trace!(target: "packet_core::decode", event, field, idx, ?kind, "field decoded");
+
     TRACE_SINK.with(|sink| {
         if let Some(t) = sink.borrow_mut().as_mut() {
             t.fields.push(FieldDecode {
