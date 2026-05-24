@@ -12,6 +12,7 @@ struct PacketOptions {
     default_missing: bool,
     scalar_as_seq: bool,
     map: bool,
+    tolerate_garbage: bool,
 }
 
 #[derive(Debug, Default)]
@@ -175,8 +176,19 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
             }
         };
 
+        let bound_decode = if packet_options.tolerate_garbage {
+            quote! {
+                match (|| -> anyhow::Result<#field_ty> { Ok(#decode_expr) })() {
+                    Ok(v) => v,
+                    Err(_) => <#field_ty as ::std::default::Default>::default(),
+                }
+            }
+        } else {
+            quote! { #decode_expr }
+        };
+
         decode_statements.push(quote! {
-            let #field_ident = #decode_expr;
+            let #field_ident = #bound_decode;
         });
 
         init_fields.push(quote! {
@@ -218,21 +230,28 @@ pub fn expand_packet(input: DeriveInput) -> syn::Result<TokenStream> {
             "#[packet(allow_extra)] is redundant when an #[packet(extras)] field is present; remove allow_extra",
         ));
     }
+    if packet_options.tolerate_garbage && packet_options.allow_extra {
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "#[packet(tolerate_garbage)] already accepts trailing values; remove `allow_extra`",
+        ));
+    }
 
-    let extra_field_check = if packet_options.allow_extra || has_extras {
-        quote! {}
-    } else {
-        quote! {
-            if payload.len() > #field_count {
-                anyhow::bail!(
-                    "event {:?} had {} payload values, expected at most {}",
-                    #event_name,
-                    payload.len(),
-                    #field_count
-                );
+    let extra_field_check =
+        if packet_options.allow_extra || has_extras || packet_options.tolerate_garbage {
+            quote! {}
+        } else {
+            quote! {
+                if payload.len() > #field_count {
+                    anyhow::bail!(
+                        "event {:?} had {} payload values, expected at most {}",
+                        #event_name,
+                        payload.len(),
+                        #field_count
+                    );
+                }
             }
-        }
-    };
+        };
 
     Ok(quote! {
         impl packet_core::PacketMeta for #struct_name {
@@ -445,9 +464,12 @@ fn parse_packet_options(attrs: &[Attribute]) -> syn::Result<PacketOptions> {
             } else if meta.path.is_ident("map") {
                 options.map = true;
                 Ok(())
+            } else if meta.path.is_ident("tolerate_garbage") {
+                options.tolerate_garbage = true;
+                Ok(())
             } else {
                 Err(meta.error(
-                    "unsupported #[packet(...)] struct option; supported: event, allow_extra, default_missing, scalar_as_seq, map",
+                    "unsupported #[packet(...)] struct option; supported: event, allow_extra, default_missing, scalar_as_seq, map, tolerate_garbage",
                 ))
             }
         })?;

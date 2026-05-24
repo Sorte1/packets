@@ -39,6 +39,41 @@ struct WithAt {
     far: i64,
 }
 
+#[derive(Debug, Packet)]
+#[packet(event = "g", tolerate_garbage)]
+struct Lenient {
+    a: i64,
+    b: i64,
+    c: String,
+}
+
+#[test]
+fn tolerate_garbage_defaults_a_field_with_wrong_type() {
+    let payload = vec![
+        Value::I64(7),
+        Value::String("nope".into()),
+        Value::String("ok".into()),
+    ];
+    let v = Lenient::decode_payload(&payload).unwrap();
+    assert_eq!(v.a, 7);
+    assert_eq!(v.b, 0);
+    assert_eq!(v.c, "ok");
+}
+
+#[test]
+fn tolerate_garbage_allows_trailing_garbage_values() {
+    let payload = vec![
+        Value::I64(7),
+        Value::I64(8),
+        Value::String("nine".into()),
+        Value::String("ten".into()),
+    ];
+    let v = Lenient::decode_payload(&payload).unwrap();
+    assert_eq!(v.a, 7);
+    assert_eq!(v.b, 8);
+    assert_eq!(v.c, "nine");
+}
+
 fn default_minus_one() -> i64 {
     -1
 }
