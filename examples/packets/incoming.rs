@@ -19,7 +19,7 @@ pub struct PingReturn {
 pub struct Time {
     pub time_left: String,
     // 0 normal, 1 timer.end, 2 matchover, 3 matchabandoned
-    pub timer_context: i32,
+    pub timer_context: Option<i32>,
     pub game_timer: Option<i32>,
 }
 
@@ -95,6 +95,31 @@ pub struct Challenge {
 pub struct Captcha {
     pub a: i64,
     pub challenge: Challenge,
+}
+
+fn deserialize_f64_lenient<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    let val = Value::deserialize(deserializer)?;
+    match val {
+        Value::F64(f) => Ok(f),
+        Value::F32(f) => Ok(f as f64),
+        Value::I64(i) => Ok(i as f64),
+        Value::I32(i) => Ok(i as f64),
+        Value::I16(i) => Ok(i as f64),
+        Value::I8(i) => Ok(i as f64),
+        Value::U64(u) => Ok(u as f64),
+        Value::U32(u) => Ok(u as f64),
+        Value::U16(u) => Ok(u as f64),
+        Value::U8(u) => Ok(u as f64),
+        Value::String(s) => s.parse::<f64>().map_err(D::Error::custom),
+        other => Err(D::Error::custom(format!(
+            "expected number or numeric string, got {:?}",
+            other
+        ))),
+    }
 }
 
 fn deserialize_grapple<'de, D>(deserializer: D) -> Result<Option<(f64, f64, f64)>, D::Error>
@@ -424,7 +449,7 @@ pub struct ShowTracer {
 }
 
 #[derive(Debug, Packet)]
-#[packet(event = "s", scalar_as_seq, allow_extra, default_missing)]
+#[packet(event = "s", scalar_as_seq, default_missing)]
 pub struct PlayerSound {
     pub sound: Option<Value>,
     pub sid: Option<i64>,
@@ -435,8 +460,8 @@ pub struct PlayerSound {
     pub pitch: Option<f64>,
     pub range: Option<f64>,
     pub loop_count: Option<i64>,
-    pub field9: Option<Value>,
-    pub field10: Option<Value>,
+    #[packet(extras)]
+    pub trailing: Vec<Value>,
 }
 
 #[derive(Debug, Packet)]
@@ -487,18 +512,20 @@ pub struct UpdateMatchVote {
 }
 
 #[derive(Debug, Packet)]
-#[packet(event = "pr", scalar_as_seq, allow_extra, default_missing)]
+#[packet(event = "pr", scalar_as_seq, default_missing)]
 pub struct ShowProjectile {
     pub x: f64,
     pub y: f64,
     pub z: f64,
     pub dir_x: f64,
     pub dir_y: f64,
-    pub field5: Option<i64>,
-    pub field6: Option<i64>,
+    pub spread_x: Option<i64>,
+    pub spread_y: Option<i64>,
     pub projectile_type: Option<i64>,
     pub params: Option<Value>,
     pub flag: Option<i64>,
+    #[packet(extras)]
+    pub trailing: Vec<Value>,
 }
 
 #[derive(Debug, Packet)]
@@ -513,7 +540,8 @@ pub struct ServAnim {
     pub sid: i64,
     pub anim_id: i64,
     pub flag: Option<i64>,
-    pub field3: Option<Value>,
+    // JS: `if (IÍìíïîí)` — true = real player, false = AI
+    pub is_player: Option<bool>,
 }
 
 #[derive(Debug, Packet)]
@@ -559,37 +587,28 @@ pub struct AllBundleData {
 pub struct GuestEarnedRewards {}
 
 #[derive(Debug, Packet)]
-#[packet(event = "sb", scalar_as_seq, allow_extra, default_missing)]
+#[packet(event = "sb", scalar_as_seq, default_missing)]
 pub struct ShowSpeechBubble {
     pub message: Option<Value>,
-    pub field1: Option<Value>,
-    pub field2: Option<Value>,
+    #[packet(extras)]
+    pub trailing: Vec<Value>,
 }
 
 #[derive(Debug, Packet)]
-#[packet(event = "inat", scalar_as_seq, allow_extra, default_missing)]
+#[packet(event = "inat", scalar_as_seq, default_missing)]
 pub struct PlayerInteractions {
     pub sid: i64,
-    pub field1: Option<Value>,
-    pub field2: Option<Value>,
-    pub field3: Option<Value>,
-    pub field4: Option<Value>,
-    pub field5: Option<Value>,
-    pub field6: Option<Value>,
-    pub field7: Option<Value>,
-    pub field8: Option<Value>,
-    pub field9: Option<Value>,
-    pub field10: Option<Value>,
-    pub field11: Option<Value>,
+    #[packet(extras)]
+    pub fields: Vec<Value>,
 }
 
 #[derive(Debug, Packet)]
 #[packet(event = "warsClan", scalar_as_seq, allow_extra, default_missing)]
 pub struct WarsClan {
     pub clan_id: i64,
-    pub name: String,
-    pub field2: Option<i64>,
-    pub field3: Option<Value>,
+    pub clan_name: String,
+    pub clan_logo: Option<i64>,
+    pub clan_banner_color: Option<Value>,
 }
 
 #[derive(Debug, Packet)]
@@ -600,27 +619,29 @@ pub struct UpdateNames {
 }
 
 #[derive(Debug, Packet)]
-#[packet(event = "ch", scalar_as_seq, allow_extra, default_missing)]
+#[packet(event = "ch", scalar_as_seq, default_missing)]
 pub struct AddChat {
-    pub sid: i64,
+    pub team: i64,
     pub name: Option<String>,
     pub message: Option<String>,
     pub chat_type: Option<i64>,
-    pub field4: Option<Value>,
-    pub field5: Option<Value>,
+    pub color: Option<Value>,
+    pub badge_or_filter: Option<Value>,
     pub account_id: Option<i64>,
+    #[packet(extras)]
+    pub trailing: Vec<Value>,
 }
 
 #[derive(Debug, Packet)]
-#[packet(event = "crsp", scalar_as_seq, allow_extra, default_missing)]
+#[packet(event = "crsp", scalar_as_seq, default_missing)]
 pub struct CreateSpawnable {
     pub spawn_type: i64,
     pub sid: i64,
     pub x: f64,
     pub y: f64,
     pub z: f64,
-    pub field5: Option<Value>,
-    pub field6: Option<Value>,
+    #[packet(extras)]
+    pub trailing: Vec<Value>,
 }
 
 #[derive(Debug, Packet)]
@@ -653,6 +674,172 @@ pub struct UpdateLives {
 pub struct UpdateZombiePerks {
     pub perk_count: i64,
     pub perks: Vec<Value>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "uchp", allow_extra, default_missing)]
+pub struct UpdateChallengesProgress {
+    pub progress: Vec<i64>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "gt", scalar_as_seq, allow_extra, default_missing)]
+pub struct LogTime {
+    pub time: i64,
+    pub flag: Option<i64>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "chp", allow_extra)]
+pub struct CheckPointSet {}
+
+#[derive(Debug, Packet)]
+#[packet(event = "chrg", scalar_as_seq, allow_extra, default_missing)]
+pub struct SetPlayerCharged {
+    pub sid: i64,
+    pub time_ms: i64,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "am", allow_extra, default_missing)]
+pub struct AddMedal {
+    pub medal: Vec<Value>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "sp", scalar_as_seq, default_missing)]
+pub struct AddSpray {
+    pub spray_id: String,
+    pub sid: i64,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub rot: f64,
+    #[packet(extras)]
+    pub trailing: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct BpReward {
+    pub bpp: i64,
+    pub jnk: f64,
+    pub kr: Option<i64>,
+    pub sk: Option<Vec<i64>>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "chgC", scalar_as_seq, allow_extra, default_missing)]
+pub struct ChallengeCompleted {
+    pub challenge_id: i64,
+    pub complete: bool,
+    pub rewards: Option<BpReward>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "bpdl", map)]
+pub struct DataLoaded {
+    #[packet(default)]
+    pub id: i64,
+    #[packet(default)]
+    #[packet(rename = "bpp_perlevel")]
+    pub bpp_per_level: i64,
+    #[packet(default)]
+    pub descr: String,
+    #[packet(default)]
+    pub enddate: String,
+    #[packet(default)]
+    pub itemcount: i64,
+    #[packet(default)]
+    pub itemdata: String,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "bppd", map)]
+pub struct SyncBpProg {
+    #[packet(default)]
+    pub bpp: i64,
+    #[packet(default)]
+    pub tier: i64,
+    #[packet(default)]
+    pub items_claimed: String,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "gbdr", allow_extra, default_missing)]
+pub struct AvailableBundleData {
+    pub bundle_ids: Vec<i64>,
+    pub field1: Vec<Value>,
+    pub field2: Option<Value>,
+    pub bundles: Vec<Value>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "gfrnd", scalar_as_seq, allow_extra, default_missing)]
+pub struct FriendsListResponse {
+    pub friends: Vec<Value>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "gmc", scalar_as_seq, allow_extra, default_missing)]
+pub struct UpdateMail {
+    pub count: i64,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "chg", allow_extra, default_missing)]
+pub struct UpdateChallenges {
+    pub challenges: Vec<i64>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "cnfm", scalar_as_seq, allow_extra)]
+pub struct ConfirmInteraction {
+    pub interaction_id: i64,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "cust", scalar_as_seq, allow_extra, default_missing)]
+pub struct CustomResponse {
+    pub message: String,
+    pub code: Option<String>,
+    pub flag: Option<bool>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "cv", scalar_as_seq, allow_extra, default_missing)]
+pub struct CustomVal {
+    pub key: String,
+    pub value: Option<Value>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "ua", scalar_as_seq, allow_extra, default_missing)]
+pub struct UpdateAccount {
+    pub profile: Option<Value>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "uf", scalar_as_seq, allow_extra)]
+pub struct UpdateFunds {
+    pub funds: i64,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "chlR", allow_extra, default_missing)]
+pub struct UpdateChallengeRewards {
+    pub rewards: Vec<Value>,
+    pub funds: Option<i64>,
+    pub junk: Option<f64>,
+    pub field3: Option<f64>,
+    pub field4: Option<i64>,
+}
+
+#[derive(Debug, Packet)]
+#[packet(event = "ulb", scalar_as_seq, allow_extra, default_missing)]
+pub struct UpdateLeaderBoard {
+    pub state: i64,
+    pub entries: Vec<Value>,
 }
 
 #[derive(Debug, EventEnum)]
@@ -716,6 +903,26 @@ pub enum Event {
     UpdateGate(UpdateGate),
     UpdateLives(UpdateLives),
     UpdateZombiePerks(UpdateZombiePerks),
+    UpdateChallengesProgress(UpdateChallengesProgress),
+    LogTime(LogTime),
+    CheckPointSet(CheckPointSet),
+    SetPlayerCharged(SetPlayerCharged),
+    AddMedal(AddMedal),
+    AddSpray(AddSpray),
+    ChallengeCompleted(ChallengeCompleted),
+    DataLoaded(DataLoaded),
+    SyncBpProg(SyncBpProg),
+    AvailableBundleData(AvailableBundleData),
+    FriendsListResponse(FriendsListResponse),
+    UpdateMail(UpdateMail),
+    UpdateChallenges(UpdateChallenges),
+    ConfirmInteraction(ConfirmInteraction),
+    CustomResponse(CustomResponse),
+    CustomVal(CustomVal),
+    UpdateAccount(UpdateAccount),
+    UpdateFunds(UpdateFunds),
+    UpdateChallengeRewards(UpdateChallengeRewards),
+    UpdateLeaderBoard(UpdateLeaderBoard),
     #[event(unknown)]
     Unknown(String, Vec<serde_value::Value>),
 }
@@ -815,6 +1022,7 @@ pub struct ProfileData {
     pub email: Option<String>,
     pub is_admin: i64,
     pub inv_val: i64,
+    #[serde(deserialize_with = "deserialize_f64_lenient")]
     pub junk: f64,
     pub active_challenges: Vec<ChallengeEntry>,
     pub badges: Vec<i64>,
