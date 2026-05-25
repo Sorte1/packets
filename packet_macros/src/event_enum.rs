@@ -29,7 +29,9 @@ pub fn expand_event_enum(input: DeriveInput) -> syn::Result<TokenStream> {
     };
 
     let mut decode_arms = Vec::new();
-    let mut unknown_arm = None::<TokenStream>;
+    let mut encode_arms = Vec::new();
+    let mut unknown_decode_arm = None::<TokenStream>;
+    let mut unknown_encode_arm = None::<TokenStream>;
     let mut found_unknown = false;
 
     for variant in &enum_data.variants {
@@ -47,8 +49,16 @@ pub fn expand_event_enum(input: DeriveInput) -> syn::Result<TokenStream> {
 
             validate_unknown_variant(variant)?;
 
-            unknown_arm = Some(quote! {
+            unknown_decode_arm = Some(quote! {
                 _ => Ok(Self::#variant_ident(event_name.to_string(), payload.to_vec())),
+            });
+
+            unknown_encode_arm = Some(quote! {
+                Self::#variant_ident(name, payload) => {
+                    let mut values = vec![serde_value::Value::String(name.clone())];
+                    values.extend(payload.iter().cloned());
+                    Ok(values)
+                }
             });
 
             continue;
@@ -70,15 +80,20 @@ pub fn expand_event_enum(input: DeriveInput) -> syn::Result<TokenStream> {
                     })
             }
         });
+
+        encode_arms.push(quote! {
+            Self::#variant_ident(p) => packet_core::OutgoingPacket::to_values(p),
+        });
     }
 
-    let unknown_arm = if let Some(arm) = unknown_arm {
+    let unknown_decode_arm = if let Some(arm) = unknown_decode_arm {
         arm
     } else {
         quote! {
             _ => anyhow::bail!("Unknown event {:?} with payload {:?}", event_name, payload),
         }
     };
+    let unknown_encode_arm = unknown_encode_arm.unwrap_or_default();
 
     Ok(quote! {
         impl #enum_name {
@@ -88,7 +103,16 @@ pub fn expand_event_enum(input: DeriveInput) -> syn::Result<TokenStream> {
             ) -> anyhow::Result<Self> {
                 match event_name {
                     #(#decode_arms,)*
-                    #unknown_arm
+                    #unknown_decode_arm
+                }
+            }
+        }
+
+        impl packet_core::OutgoingPacket for #enum_name {
+            fn to_values(&self) -> anyhow::Result<Vec<serde_value::Value>> {
+                match self {
+                    #(#encode_arms)*
+                    #unknown_encode_arm
                 }
             }
         }
