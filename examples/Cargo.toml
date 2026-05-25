@@ -22,7 +22,3 @@ path = "outgoing_encode.rs"
 [[bin]]
 name = "event_dispatch"
 path = "event_dispatch.rs"
-
-[[bin]]
-name = "proxy_intercept"
-path = "proxy_intercept.rs"
