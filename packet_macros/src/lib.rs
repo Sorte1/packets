@@ -17,7 +17,6 @@ pub fn derive_packet(input: TokenStream) -> TokenStream {
     }
 }
 
-
 #[proc_macro_derive(OutgoingFields, attributes(packet))]
 pub fn derive_outgoing_fields(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);
