@@ -1,7 +1,18 @@
 [package]
+name = "krunker_packet_core"
+description = "Runtime traits and msgpack decode helpers for Krunker WebSocket packets."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["krunker", "packet", "msgpack", "serde", "websocket"]
+categories = ["encoding", "network-programming", "game-development"]
+
+[lib]
 name = "packet_core"
-version = "0.1.0"
-edition = "2021"
 
 [dependencies]
 anyhow = "1"

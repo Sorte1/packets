@@ -2,6 +2,7 @@
 name = "packets-cli"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 [[bin]]
 name = "packets"
@@ -11,5 +12,5 @@ path = "src/main.rs"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 hex = "0.4"
-packet_core = { path = "../packet_core" }
+krunker_packet_core = { path = "../packet_core" }
 serde-value = "0.7"

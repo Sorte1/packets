@@ -1,9 +1,18 @@
 [package]
-name = "packet_macros"
-version = "0.1.0"
-edition = "2021"
+name = "krunker_packet_macros"
+description = "Derive macros for describing Krunker WebSocket packets as Rust structs."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["krunker", "packet", "macros", "derive", "msgpack"]
+categories = ["development-tools::procedural-macro-helpers", "encoding"]
 
 [lib]
+name = "packet_macros"
 proc-macro = true
 
 [dependencies]

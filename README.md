@@ -1,5 +1,3 @@
-Readme is ai generated
-
 # packets
 
 Derive macros for Krunker WebSocket packets.
@@ -16,8 +14,8 @@ This crate lets you describe those packets as plain Rust structs and generates t
 
 ## Crates
 
-- **`packet_core`** — runtime traits and decode helpers (`PacketMeta`, `PacketDecode`, `OutgoingPacket`, `OutgoingFields`, `OutgoingEventEnum`).
-- **`packet_macros`** — proc macros that emit the `impl` blocks: `Packet`, `OutgoingFields`, `EventEnum`, `OutgoingEventEnum`.
+- **`krunker_packet_core`** (imported as `packet_core`) — runtime traits and decode helpers (`PacketMeta`, `PacketDecode`, `OutgoingPacket`, `OutgoingFields`, `OutgoingEventEnum`).
+- **`krunker_packet_macros`** (imported as `packet_macros`) — proc macros that emit the `impl` blocks: `Packet`, `OutgoingFields`, `EventEnum`, `OutgoingEventEnum`.
 
 They are split because Rust proc macros cannot be used by the same crate that defines them.
 

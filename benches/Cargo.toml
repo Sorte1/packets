@@ -5,8 +5,8 @@ edition = "2021"
 publish = false
 
 [dependencies]
-packet_core = { path = "../packet_core" }
-packet_macros = { path = "../packet_macros" }
+krunker_packet_core = { path = "../packet_core" }
+krunker_packet_macros = { path = "../packet_macros" }
 serde = { version = "1", features = ["derive"] }
 serde-value = "0.7"
 anyhow = "1"
